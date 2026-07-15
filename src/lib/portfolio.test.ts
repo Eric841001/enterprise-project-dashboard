@@ -8,6 +8,7 @@ describe('project validation',()=>{
 })
 describe('portfolio calculations',()=>{
   it('preserves discontinuous work periods',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,5)).toBe(false);expect(activeInMonth(p,8)).toBe(true)})
+  it('does not carry a one-year schedule into another year',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,8,2027)).toBe(false)})
   it('detects monthly over-allocation',()=>{expect(allocationFor('Engineer B',8,projects)).toBeGreaterThan(100)})
   it('creates Excel-compatible UTF-8 CSV',()=>{const csv=toCsv(projects.slice(0,1));const unicodeCsv=toCsv([{...projects[0],customer:'샘플 고객'}]);expect(csv.charCodeAt(0)).toBe(0xfeff);expect(csv).toContain('Sample Hanseong Manufacturing');expect(unicodeCsv).toContain('샘플 고객')})
   it('returns consistency warnings',()=>{expect(projectWarnings({...projects[0],status:'Confirmed',probability:50})).toContain('확정 상태지만 확률이 100% 미만입니다.')})

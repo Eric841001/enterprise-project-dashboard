@@ -10,11 +10,13 @@ export function validateProject(project: Pick<Project,'customer'|'name'|'probabi
   return errors
 }
 
-export function activeInMonth(project: Project, month: number) {
-  if (project.workMonths) return project.workMonths.includes(month)
+export function activeInMonth(project: Project, month: number, year = 2026) {
+  if (project.workMonths) return year === 2026 && project.workMonths.includes(month)
   if (!project.startDate || !project.endDate) return false
-  const start = Number(project.startDate.slice(5,7)); const end = Number(project.endDate.slice(5,7))
-  return month >= start && month <= end
+  const point = year * 12 + month
+  const start = Number(project.startDate.slice(0,4)) * 12 + Number(project.startDate.slice(5,7))
+  const end = Number(project.endDate.slice(0,4)) * 12 + Number(project.endDate.slice(5,7))
+  return point >= start && point <= end
 }
 
 export function projectWarnings(project: Project) {

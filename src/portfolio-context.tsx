@@ -17,6 +17,7 @@ import type { Project, ProjectStatus, Resource, RiskLevel } from "./types";
 interface PortfolioContextValue {
   projects: Project[];
   resources: Resource[];
+  customers: CustomerRow[];
   canEdit: boolean;
   loading: boolean;
   error: string;
@@ -84,6 +85,11 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [resources, setResources] = useState<Resource[]>(
     isSupabaseConfigured ? [] : sampleResources,
   );
+  const [customers, setCustomers] = useState<CustomerRow[]>(
+    isSupabaseConfigured
+      ? []
+      : Array.from(new Set(sampleProjects.map((project) => project.customer))).map((name) => ({ id: name, name })),
+  );
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -93,6 +99,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     if (!client) {
       setProjects(sampleProjects);
       setResources(sampleResources);
+      setCustomers(Array.from(new Set(sampleProjects.map((project) => project.customer))).map((name) => ({ id: name, name })));
       setCanEdit(false);
       setLoading(false);
       return;
@@ -107,6 +114,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setError("이 계정은 아직 포트폴리오 열람 승인을 받지 않았습니다.");
       setProjects([]);
       setResources([]);
+      setCustomers([]);
       setCanEdit(false);
       setLoading(false);
       return;
@@ -151,6 +159,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setError(firstError.message);
       setProjects([]);
       setResources([]);
+      setCustomers([]);
       setLoading(false);
       return;
     }
@@ -161,6 +170,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     const assignmentRows = (assignmentResult.data ?? []) as AssignmentRow[];
     const periodRows = (periodResult.data ?? []) as WorkPeriodRow[];
     const customerById = new Map(customerRows.map((row) => [row.id, row.name]));
+    setCustomers(customerRows);
     const resourceById = new Map(resourceRows.map((row) => [row.id, row.name]));
 
     setResources(
@@ -211,8 +221,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
   const value = useMemo(
-    () => ({ projects, resources, canEdit, loading, error, refresh }),
-    [projects, resources, canEdit, loading, error, refresh],
+    () => ({ projects, resources, customers, canEdit, loading, error, refresh }),
+    [projects, resources, customers, canEdit, loading, error, refresh],
   );
   return (
     <PortfolioContext.Provider value={value}>

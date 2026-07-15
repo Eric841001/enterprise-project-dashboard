@@ -12,6 +12,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useParams,
 } from "react-router-dom";
 import {
@@ -49,7 +50,14 @@ import {
   YAxis,
 } from "recharts";
 import { PortfolioProvider, usePortfolio } from "./portfolio-context";
-import { ProjectAssignmentEditor } from "./ProjectAssignmentEditor";
+import {
+  CustomerFormDialog,
+  ProjectFormDialog,
+  ReportDialog,
+  ResourceFormDialog,
+  categories,
+  type ReportKind,
+} from "./ManagementDialogs";
 import {
   activeInMonth,
   allocationFor,
@@ -186,7 +194,14 @@ function Shell() {
   resources = portfolio.resources;
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [showAlerts, setShowAlerts] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const globalMatches = globalQuery.trim()
+    ? portfolio.projects.filter((project) => `${project.customer} ${project.name} ${project.resources.join(" ")}`.toLowerCase().includes(globalQuery.toLowerCase())).slice(0, 6)
+    : [];
+  const alerts = portfolio.projects.filter((project) => project.risk === "High" || !project.startDate || !project.resources.length);
   useEffect(() => setOpen(false), [location.pathname]);
   return (
     <div className={dark ? "app dark" : "app"}>
@@ -237,10 +252,27 @@ function Shell() {
             <input
               placeholder="프로젝트, 고객사, 담당자 검색"
               aria-label="전체 검색"
+              value={globalQuery}
+              onChange={(event) => setGlobalQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && globalMatches[0]) {
+                  navigate(`/projects/${globalMatches[0].id}`);
+                  setGlobalQuery("");
+                }
+              }}
             />
+            {globalMatches.length > 0 && (
+              <div className="search-results">
+                {globalMatches.map((project) => (
+                  <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setGlobalQuery("")}>
+                    <strong>{project.customer}</strong><span>{project.name} · {project.resources.join(", ") || "담당자 미지정"}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
           <div className="header-actions">
-            <span className="sync">샘플 데이터</span>
+            <span className="sync">{isSupabaseConfigured ? "실시간 데이터" : "샘플 데이터"}</span>
             <button
               className="icon"
               onClick={() => setDark(!dark)}
@@ -248,9 +280,17 @@ function Shell() {
             >
               {dark ? <Sun /> : <Moon />}
             </button>
-            <button className="icon">
+            <button className="icon notification-button" onClick={() => setShowAlerts((value) => !value)} aria-label="주의 항목 알림">
               <Bell />
+              {alerts.length > 0 && <i>{alerts.length}</i>}
             </button>
+            {showAlerts && (
+              <div className="notification-panel">
+                <strong>주의 항목 {alerts.length}건</strong>
+                {alerts.slice(0, 5).map((project) => <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setShowAlerts(false)}><span>{project.customer} · {project.name}</span><small>{project.risk === "High" ? "고위험" : !project.startDate ? "일정 미정" : "리소스 미지정"}</small></Link>)}
+                {!alerts.length && <p>현재 주의 항목이 없습니다.</p>}
+              </div>
+            )}
             {supabase && (
               <button
                 className="icon"
@@ -514,9 +554,6 @@ function PanelHead({ title, detail }: { title: string; detail: string }) {
         <h2>{title}</h2>
         <p>{detail}</p>
       </div>
-      <button className="icon">
-        <Menu />
-      </button>
     </div>
   );
 }
@@ -561,6 +598,8 @@ function useProjectFilter() {
   return { query, setQuery, status, setStatus, filtered };
 }
 function Projects() {
+  const { canEdit } = usePortfolio();
+  const [creating, setCreating] = useState(false);
   const { query, setQuery, status, setStatus, filtered } = useProjectFilter();
   function download() {
     const blob = new Blob([toCsv(filtered)], {
@@ -581,13 +620,15 @@ function Projects() {
         action={
           <button
             className="primary"
-            disabled={!isSupabaseConfigured}
-            title={!isSupabaseConfigured ? "Supabase 연결 후 사용 가능" : ""}
+            disabled={!isSupabaseConfigured || !canEdit}
+            onClick={() => setCreating(true)}
+            title={!canEdit ? "Admin 또는 Manager만 등록할 수 있습니다." : ""}
           >
             <Plus /> 프로젝트 등록
           </button>
         }
       />
+      <ProjectFormDialog open={creating} onClose={() => setCreating(false)} />
       <div className="toolbar">
         <label className="search-box">
           <Search />
@@ -734,7 +775,7 @@ function ProjectDetail() {
           </button>
         }
       />
-      <ProjectAssignmentEditor
+      <ProjectFormDialog
         project={p}
         open={editing}
         onClose={() => setEditing(false)}
@@ -837,8 +878,15 @@ function ProjectDetail() {
 function Schedule() {
   const [year, setYear] = useState(2026);
   const [prob, setProb] = useState("all");
+  const [scheduleQuery, setScheduleQuery] = useState("");
+  const [scheduleStatus, setScheduleStatus] = useState("all");
+  const [scheduleCategory, setScheduleCategory] = useState("all");
   const rows = projects.filter(
-    (p) => prob === "all" || p.probability === Number(prob),
+    (p) =>
+      (prob === "all" || p.probability === Number(prob)) &&
+      (scheduleStatus === "all" || p.status === scheduleStatus) &&
+      (scheduleCategory === "all" || p.category === scheduleCategory) &&
+      `${p.customer} ${p.name} ${p.resources.join(" ")}`.toLowerCase().includes(scheduleQuery.toLowerCase()),
   );
   return (
     <>
@@ -853,6 +901,7 @@ function Schedule() {
         }
       />
       <div className="toolbar">
+        <label className="search-box"><Search /><input value={scheduleQuery} onChange={(event) => setScheduleQuery(event.target.value)} placeholder="고객사·프로젝트·리소스 검색" /></label>
         <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
           <option>2026</option>
           <option>2027</option>
@@ -862,6 +911,8 @@ function Schedule() {
           <option value="100">100% 확정</option>
           <option value="50">50% 파이프라인</option>
         </select>
+        <select value={scheduleStatus} onChange={(event) => setScheduleStatus(event.target.value)}><option value="all">모든 상태</option>{["Lead", "Proposal", "Confirmed", "Planning", "In Progress", "At Risk", "Completed", "On Hold"].map((item) => <option key={item}>{item}</option>)}</select>
+        <select value={scheduleCategory} onChange={(event) => setScheduleCategory(event.target.value)}><option value="all">모든 카테고리</option>{Array.from(new Set(projects.map((project) => project.category))).map((item) => <option key={item}>{item}</option>)}</select>
         <div className="timeline-legend">
           <span>
             <i className="bar confirmed" />
@@ -904,9 +955,9 @@ function Schedule() {
                   aria-label={`${p.name} ${i + 1}월`}
                   to={`/projects/${p.id}`}
                   key={i}
-                  className={`month-cell ${i === 6 ? "current" : ""} ${activeInMonth(p, i + 1) ? (p.probability === 100 ? "active confirmed" : "active pipeline") : ""}`}
+                  className={`month-cell ${year === 2026 && i === 6 ? "current" : ""} ${activeInMonth(p, i + 1, year) ? (p.probability === 100 ? "active confirmed" : "active pipeline") : ""}`}
                 >
-                  {activeInMonth(p, i + 1) && <span />}
+                  {activeInMonth(p, i + 1, year) && <span />}
                 </Link>
               ))}
             </div>
@@ -922,15 +973,22 @@ function Schedule() {
 }
 
 function Resources() {
+  const { canEdit } = usePortfolio();
   const [month, setMonth] = useState(8);
+  const [creating, setCreating] = useState(false);
+  const [resourceQuery, setResourceQuery] = useState("");
+  const visibleResources = resources.filter((resource) => `${resource.name} ${resource.role} ${resource.skill}`.toLowerCase().includes(resourceQuery.toLowerCase()));
   return (
     <>
       <PageTitle
         eyebrow="CAPACITY MANAGEMENT"
         title="리소스"
         desc="월별 배정과 가용 용량을 기준으로 과부하를 조기에 확인합니다."
+        action={<button className="primary" disabled={!canEdit} onClick={() => setCreating(true)} title={!canEdit ? "Admin 또는 Manager만 등록할 수 있습니다." : ""}><Plus /> 리소스 등록</button>}
       />
+      <ResourceFormDialog open={creating} onClose={() => setCreating(false)} />
       <div className="toolbar">
+        <label className="search-box"><Search /><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="이름·역할·기술 검색" /></label>
         <select
           value={month}
           onChange={(e) => setMonth(Number(e.target.value))}
@@ -943,7 +1001,7 @@ function Resources() {
         </select>
       </div>
       <section className="resource-grid">
-        {resources.map((r) => {
+        {visibleResources.map((r) => {
           const alloc = allocationFor(r.name, month, projects);
           return (
             <article className="panel resource-card" key={r.id}>
@@ -992,9 +1050,11 @@ function Resources() {
 }
 
 function Customers() {
-  const customerRows = Array.from(new Set(projects.map((p) => p.customer))).map(
-    (name) => ({ name, items: projects.filter((p) => p.customer === name) }),
-  );
+  const { canEdit, customers } = usePortfolio();
+  const [creating, setCreating] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState("");
+  const customerRows = customers.map(({ name }) => ({ name, items: projects.filter((p) => p.customer === name) }))
+    .filter((customer) => `${customer.name} ${customer.items.map((item) => item.name).join(" ")}`.toLowerCase().includes(customerQuery.toLowerCase()));
   return (
     <>
       <PageTitle
@@ -1002,11 +1062,13 @@ function Customers() {
         title="고객사"
         desc="고객별 프로젝트 현황과 파이프라인을 한곳에서 관리합니다."
         action={
-          <button className="primary" disabled={!isSupabaseConfigured}>
+          <button className="primary" disabled={!isSupabaseConfigured || !canEdit} onClick={() => setCreating(true)} title={!canEdit ? "Admin 또는 Manager만 등록할 수 있습니다." : ""}>
             <Plus /> 고객사 등록
           </button>
         }
       />
+      <CustomerFormDialog open={creating} onClose={() => setCreating(false)} />
+      <div className="toolbar"><label className="search-box"><Search /><input value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="고객사 또는 프로젝트 검색" /></label></div>
       <section className="customer-grid">
         {customerRows.map((c) => (
           <article className="panel customer-card" key={c.name}>
@@ -1032,9 +1094,7 @@ function Customers() {
                 </strong>
               </span>
             </div>
-            <Link to={`/projects/${c.items[0].id}`}>
-              프로젝트 보기 <ChevronRight />
-            </Link>
+            {c.items[0] ? <Link to={`/projects/${c.items[0].id}`}>프로젝트 보기 <ChevronRight /></Link> : <span className="muted">등록된 프로젝트 없음</span>}
           </article>
         ))}
       </section>
@@ -1043,6 +1103,7 @@ function Customers() {
 }
 
 function Reports() {
+  const [openReport, setOpenReport] = useState<ReportKind | null>(null);
   const confirmed = projects.filter((p) => p.probability === 100).length;
   const high = projects.filter((p) => p.risk === "High").length;
   return (
@@ -1052,6 +1113,7 @@ function Reports() {
         title="리포트"
         desc="현재 포트폴리오 데이터를 바탕으로 한 결정론적 경영 요약입니다."
       />
+      <ReportDialog kind={openReport} onClose={() => setOpenReport(null)} />
       <article className="panel report-hero">
         <div>
           <p className="eyebrow">JULY 2026 · EXECUTIVE SUMMARY</p>
@@ -1071,14 +1133,14 @@ function Reports() {
         </button>
       </article>
       <section className="report-grid">
-        {[
+        {([
           "월간 포트폴리오",
           "확정 vs 파이프라인",
           "리소스 활용률",
           "위험 및 이슈",
           "고객사 요약",
           "업데이트 준수",
-        ].map((x, i) => (
+        ] as ReportKind[]).map((x, i) => (
           <article className="panel report-card" key={x}>
             <div className="report-icon">
               <BarChart3 />
@@ -1089,7 +1151,7 @@ function Reports() {
                 ? "월별 추세와 주요 변화를 경영진 관점에서 확인합니다."
                 : "필터링된 데이터를 표와 요약으로 내보냅니다."}
             </p>
-            <button className="text-button">
+            <button className="text-button" onClick={() => setOpenReport(x)}>
               리포트 열기 <ChevronRight />
             </button>
           </article>
@@ -1133,6 +1195,7 @@ function SettingsPage() {
             M365, Azure, Security, Copilot, Migration 등 운영 분류를
             데이터베이스에서 관리할 수 있습니다.
           </p>
+          <div className="category-chips">{categories.map((category) => <Badge key={category} tone="gray">{category}</Badge>)}</div>
         </article>
       </section>
     </>
