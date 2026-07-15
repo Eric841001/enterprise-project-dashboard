@@ -13,11 +13,13 @@ export interface Project {
   progress: number
   manager: string
   resources: string[]
+  resourceAllocations?: Record<string, number>
   risk: RiskLevel
   scope: string
   phase: string
   updatedAt: string
   workMonths?: number[]
+  workPeriods?: Array<{ startDate: string; endDate: string }>
   importNote?: string
 }
 

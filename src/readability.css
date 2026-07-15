@@ -1,0 +1,60 @@
+/* Readability layer: keep operational data comfortable at normal browser zoom. */
+body { font-size: 16px; line-height: 1.5; }
+.sidebar nav a { font-size: 15px; padding-block: 14px; }
+.logo span,.side-foot span { font-size: 12px; }
+.side-foot > div:last-child { font-size: 14px; }
+.global-search input { font-size: 15px; }
+.sync { font-size: 13px; }
+.content { max-width: 1540px; }
+.eyebrow { font-size: 12px; }
+.page-title h1 { font-size: 34px; }
+.page-title > div > p:last-child,.panel-head p,.resource-head p { font-size: 15px; }
+.primary,.secondary { font-size: 14px; padding: 11px 16px; }
+.preview-note,.warning { font-size: 14px; }
+.kpi > span { font-size: 13px; }
+.kpi > strong { font-size: 32px; }
+.kpi small { font-size: 12px; }
+.badge { font-size: 11px; padding: 5px 9px; }
+.panel-head h2,.prose h2,.report-card h2,.setting h2 { font-size: 17px; }
+.attention-row strong { font-size: 13px; }
+.attention-row span,.panel-link { font-size: 11px; }
+.mini-project { font-size: 12px; padding-block: 13px; }
+.toolbar select,.toolbar input { font-size: 13px; }
+table { font-size: 13px; }
+th { font-size: 11px; padding: 14px 15px; }
+td { padding: 15px; }
+.avatars small { font-size: 12px; }
+.breadcrumbs { font-size: 12px; }
+.prose dl > div,.resource-line > div:last-child { font-size: 13px; }
+.resource-line span,.three-col span { font-size: 11px; }
+.three-col strong { font-size: 14px; }
+.timeline-head { font-size: 11px; }
+.timeline-label { font-size: 12px; }
+.timeline-label span,.timeline-legend,.footnote { font-size: 10px; }
+.resource-head h2,.customer-card h2 { font-size: 16px; }
+.capacity,.resource-meta,.customer-card p,.customer-stats span,.customer-card > a { font-size: 11px; }
+.capacity strong { font-size: 24px; }
+.customer-stats strong { font-size: 19px; }
+.report-hero > div > p:last-child { font-size: 14px; }
+.report-card p,.setting p,.setting li { font-size: 13px; }
+.text-button { font-size: 13px; }
+.setting code { font-size: 11px; }
+.muted,.form-error { font-size: 13px; }
+.form-grid label,.resource-picker legend { font-size: 12px; }
+.form-grid input,.form-grid select,.form-grid textarea { font-size: 14px; }
+.resource-picker small,.dialog-note { font-size: 10px; }
+.dialog-head p:last-child { font-size: 13px; }
+.search-results strong { font-size: 13px; }
+.search-results span,.notification-panel a { font-size: 11px; }
+.notification-panel > strong { font-size: 14px; }
+.setting-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.setting-metrics span { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 8px; background: var(--bg); color: var(--muted); font-size: 11px; }
+.setting-metrics strong { color: inherit; font-size: 20px; }
+
+.allocation-input { grid-column: 2; width: 88px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+
+@media (max-width: 760px) {
+  .page-title h1 { font-size: 29px; }
+  table { font-size: 12px; }
+  .content { padding-inline: 16px; }
+}

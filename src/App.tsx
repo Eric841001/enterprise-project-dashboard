@@ -231,7 +231,7 @@ function Shell() {
         <div className="side-foot">
           <div className="avatar">AD</div>
           <div>
-            <strong>관리자</strong>
+            <strong>{portfolio.role === "admin" ? "관리자" : portfolio.role === "manager" ? "매니저" : "조회 사용자"}</strong>
             <span>
               {isSupabaseConfigured ? "Secure workspace" : "읽기 전용 미리보기"}
             </span>
@@ -394,6 +394,12 @@ function Dashboard() {
   );
   const high = projects.filter((p) => p.risk === "High");
   const assigned = new Set(projects.flatMap((p) => p.resources)).size;
+  const now = new Date();
+  const dashboardYear = now.getFullYear();
+  const dashboardMonth = now.getMonth() + 1;
+  const overallocated = resources.filter((resource) => allocationFor(resource.name, dashboardMonth, projects, dashboardYear) > 100);
+  const unassigned = projects.filter((project) => !project.resources.length);
+  const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
   const statusData = Object.entries(
     projects.reduce<Record<string, number>>(
       (a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a),
@@ -402,7 +408,7 @@ function Dashboard() {
   ).map(([name, value]) => ({ name: statusKo[name], value }));
   const monthly = Array.from({ length: 12 }, (_, i) => ({
     month: `${i + 1}월`,
-    projects: projects.filter((p) => activeInMonth(p, i + 1)).length,
+    projects: projects.filter((p) => activeInMonth(p, i + 1, dashboardYear)).length,
   }));
   return (
     <>
@@ -438,13 +444,13 @@ function Dashboard() {
           note="가중 프로젝트 2.5건"
         />
         <Kpi label="고위험" value={high.length} note="즉시 검토 필요" danger />
-        <Kpi label="할당 리소스" value={assigned} note="7명 / 2명 과부하" />
+        <Kpi label="할당 리소스" value={assigned} note={`${overallocated.length}명 과부하 · ${resources.length - assigned}명 미배정`} />
       </section>
       <section className="dashboard-grid">
         <article className="panel chart-panel">
           <PanelHead
             title="월별 운영 프로젝트"
-            detail="2026년 활성 프로젝트 수"
+            detail={`${dashboardYear}년 활성 프로젝트 수`}
           />
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={monthly}>
@@ -457,7 +463,7 @@ function Dashboard() {
           </ResponsiveContainer>
         </article>
         <article className="panel chart-panel">
-          <PanelHead title="상태 분포" detail="전체 10개 프로젝트" />
+          <PanelHead title="상태 분포" detail={`전체 ${projects.length}개 프로젝트`} />
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie
@@ -492,20 +498,20 @@ function Dashboard() {
           <Attention
             icon={<AlertTriangle />}
             tone="red"
-            title="고위험 프로젝트 2건"
-            text="Sample Daehan Financial, Sample Onyu Trading"
+            title={`고위험 프로젝트 ${high.length}건`}
+            text={high.map((project) => project.customer).join(", ") || "해당 없음"}
           />
           <Attention
             icon={<Users />}
             tone="amber"
-            title="리소스 미지정 2건"
-            text="Sample Onyu Trading, Sample Nuri Services"
+            title={`리소스 미지정 ${unassigned.length}건`}
+            text={unassigned.map((project) => project.customer).join(", ") || "해당 없음"}
           />
           <Attention
             icon={<CalendarDays />}
             tone="blue"
-            title="일정 미확정 2건"
-            text="Sample Onyu Trading, Sample Nuri Services"
+            title={`일정 미확정 ${unscheduled.length}건`}
+            text={unscheduled.map((project) => project.customer).join(", ") || "해당 없음"}
           />
           <Link to="/projects" className="panel-link">
             전체 프로젝트 검토 <ChevronRight />
@@ -584,30 +590,34 @@ function useProjectFilter() {
   const { projects } = usePortfolio();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [risk, setRisk] = useState("all");
   const filtered = useMemo(
     () =>
       projects.filter(
         (p) =>
           (status === "all" || p.status === status) &&
+          (category === "all" || p.category === category) &&
+          (risk === "all" || p.risk === risk) &&
           `${p.customer} ${p.name} ${p.resources.join(" ")}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
-    [projects, query, status],
+    [projects, query, status, category, risk],
   );
-  return { query, setQuery, status, setStatus, filtered };
+  return { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, filtered };
 }
 function Projects() {
   const { canEdit } = usePortfolio();
   const [creating, setCreating] = useState(false);
-  const { query, setQuery, status, setStatus, filtered } = useProjectFilter();
+  const { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, filtered } = useProjectFilter();
   function download() {
     const blob = new Blob([toCsv(filtered)], {
       type: "text/csv;charset=utf-8",
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "projects-2026.csv";
+    a.download = `projects-${new Date().getFullYear()}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -640,12 +650,15 @@ function Projects() {
         </label>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="all">모든 상태</option>
-          {["Lead", "Proposal", "Confirmed", "Planning", "In Progress"].map(
+          {["Lead", "Proposal", "Confirmed", "Planning", "In Progress", "At Risk", "Completed", "On Hold"].map(
             (s) => (
               <option key={s}>{s}</option>
             ),
           )}
         </select>
+        <select value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">모든 카테고리</option>{Array.from(new Set(projects.map((project) => project.category))).map((item) => <option key={item}>{item}</option>)}</select>
+        <select value={risk} onChange={(event) => setRisk(event.target.value)}><option value="all">모든 위험</option><option>Low</option><option>Medium</option><option>High</option></select>
+        {(query || status !== "all" || category !== "all" || risk !== "all") && <button className="secondary" onClick={() => { setQuery(""); setStatus("all"); setCategory("all"); setRisk("all"); }}>필터 초기화</button>}
         <button className="secondary" onClick={download}>
           <Download /> CSV 내보내기
         </button>
@@ -839,7 +852,7 @@ function ProjectDetail() {
                 <div className="avatar">{n.slice(0, 2)}</div>
                 <div>
                   <strong>{n}</strong>
-                  <span>할당 50% · 프로젝트 기간</span>
+                  <span>할당 {p.resourceAllocations?.[n] ?? 50}% · 프로젝트 기간</span>
                 </div>
               </div>
             ))
@@ -876,7 +889,12 @@ function ProjectDetail() {
 }
 
 function Schedule() {
-  const [year, setYear] = useState(2026);
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  const projectYears = projects.flatMap((project) => [project.startDate, project.endDate]).filter((date): date is string => Boolean(date)).map((date) => Number(date.slice(0, 4)));
+  const availableYears = Array.from(new Set([currentYear, ...projectYears])).sort((a, b) => a - b);
+  const [year, setYear] = useState(currentYear);
   const [prob, setProb] = useState("all");
   const [scheduleQuery, setScheduleQuery] = useState("");
   const [scheduleStatus, setScheduleStatus] = useState("all");
@@ -903,8 +921,7 @@ function Schedule() {
       <div className="toolbar">
         <label className="search-box"><Search /><input value={scheduleQuery} onChange={(event) => setScheduleQuery(event.target.value)} placeholder="고객사·프로젝트·리소스 검색" /></label>
         <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-          <option>2026</option>
-          <option>2027</option>
+          {availableYears.map((item) => <option key={item}>{item}</option>)}
         </select>
         <select value={prob} onChange={(e) => setProb(e.target.value)}>
           <option value="all">모든 확률</option>
@@ -937,7 +954,7 @@ function Schedule() {
           {Array.from({ length: 12 }, (_, i) => (
             <div
               key={i}
-              className={`timeline-head ${i === 6 ? "current" : ""}`}
+              className={`timeline-head ${year === currentYear && i === currentMonth ? "current" : ""}`}
             >
               {i + 1}월
             </div>
@@ -955,7 +972,7 @@ function Schedule() {
                   aria-label={`${p.name} ${i + 1}월`}
                   to={`/projects/${p.id}`}
                   key={i}
-                  className={`month-cell ${year === 2026 && i === 6 ? "current" : ""} ${activeInMonth(p, i + 1, year) ? (p.probability === 100 ? "active confirmed" : "active pipeline") : ""}`}
+                  className={`month-cell ${year === currentYear && i === currentMonth ? "current" : ""} ${activeInMonth(p, i + 1, year) ? (p.probability === 100 ? "active confirmed" : "active pipeline") : ""}`}
                 >
                   {activeInMonth(p, i + 1, year) && <span />}
                 </Link>
@@ -964,20 +981,24 @@ function Schedule() {
           ))}
         </div>
       </div>
-      <p className="footnote">
-        * Sample Mirae Mobility uses intentionally non-contiguous sample work
-        months for timeline verification.
-      </p>
+      {!isSupabaseConfigured && <p className="footnote">* 미리보기 데이터에는 비연속 일정 검증용 샘플이 포함됩니다.</p>}
     </>
   );
 }
 
 function Resources() {
   const { canEdit } = usePortfolio();
-  const [month, setMonth] = useState(8);
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [resourceYear, setResourceYear] = useState(new Date().getFullYear());
   const [creating, setCreating] = useState(false);
   const [resourceQuery, setResourceQuery] = useState("");
   const visibleResources = resources.filter((resource) => `${resource.name} ${resource.role} ${resource.skill}`.toLowerCase().includes(resourceQuery.toLowerCase()));
+  const resourceYears = Array.from(new Set([
+    new Date().getFullYear(),
+    ...projects.flatMap((project) => [project.startDate, project.endDate])
+      .filter((date): date is string => Boolean(date))
+      .map((date) => Number(date.slice(0, 4))),
+  ])).sort((a, b) => a - b);
   return (
     <>
       <PageTitle
@@ -989,6 +1010,7 @@ function Resources() {
       <ResourceFormDialog open={creating} onClose={() => setCreating(false)} />
       <div className="toolbar">
         <label className="search-box"><Search /><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="이름·역할·기술 검색" /></label>
+        <select value={resourceYear} onChange={(event) => setResourceYear(Number(event.target.value))}>{resourceYears.map((item) => <option key={item}>{item}</option>)}</select>
         <select
           value={month}
           onChange={(e) => setMonth(Number(e.target.value))}
@@ -1002,7 +1024,7 @@ function Resources() {
       </div>
       <section className="resource-grid">
         {visibleResources.map((r) => {
-          const alloc = allocationFor(r.name, month, projects);
+          const alloc = allocationFor(r.name, month, projects, resourceYear);
           return (
             <article className="panel resource-card" key={r.id}>
               <div className="resource-head">
@@ -1035,7 +1057,7 @@ function Resources() {
                       projects.filter(
                         (p) =>
                           p.resources.includes(r.name) &&
-                          activeInMonth(p, month),
+                          activeInMonth(p, month, resourceYear),
                       ).length
                     }
                   </strong>
@@ -1103,6 +1125,10 @@ function Customers() {
 }
 
 function Reports() {
+  const reportDate = new Date();
+  const reportYear = reportDate.getFullYear();
+  const reportMonth = reportDate.getMonth() + 1;
+  const reportMonthLabel = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(reportDate);
   const [openReport, setOpenReport] = useState<ReportKind | null>(null);
   const confirmed = projects.filter((p) => p.probability === 100).length;
   const high = projects.filter((p) => p.risk === "High").length;
@@ -1116,7 +1142,7 @@ function Reports() {
       <ReportDialog kind={openReport} onClose={() => setOpenReport(null)} />
       <article className="panel report-hero">
         <div>
-          <p className="eyebrow">JULY 2026 · EXECUTIVE SUMMARY</p>
+          <p className="eyebrow">{reportMonthLabel.toUpperCase()} · EXECUTIVE SUMMARY</p>
           <h2>월간 프로젝트 포트폴리오 요약</h2>
           <p>
             전체 <strong>{projects.length}개</strong> 프로젝트 중{" "}
@@ -1124,7 +1150,7 @@ function Reports() {
             단계입니다. 고위험 프로젝트는 <strong>{high}개</strong>, 일정 미확정
             프로젝트는{" "}
             <strong>{projects.filter((p) => !p.startDate).length}개</strong>
-            입니다. 8월에는 {projects.filter((p) => activeInMonth(p, 8)).length}
+            입니다. {reportMonth}월에는 {projects.filter((p) => activeInMonth(p, reportMonth, reportYear)).length}
             개 프로젝트가 동시에 운영되어 리소스 배정 검토가 필요합니다.
           </p>
         </div>
@@ -1162,6 +1188,7 @@ function Reports() {
 }
 
 function SettingsPage() {
+  const { role, canEdit, projects, resources, customers } = usePortfolio();
   return (
     <>
       <PageTitle
@@ -1171,6 +1198,11 @@ function SettingsPage() {
       />
       <section className="settings-grid">
         <article className="panel setting">
+          <h2>현재 권한</h2>
+          <Badge tone={canEdit ? "blue" : "gray"}>{role.toUpperCase()}</Badge>
+          <p>{canEdit ? "프로젝트·고객사·리소스를 등록하고 편집할 수 있습니다." : "승인된 포트폴리오를 조회할 수 있으며 변경 작업은 제한됩니다."}</p>
+        </article>
+        <article className="panel setting">
           <h2>Supabase 연결</h2>
           <Badge tone={isSupabaseConfigured ? "teal" : "amber"}>
             {isSupabaseConfigured ? "연결됨" : "설정 필요"}
@@ -1178,6 +1210,11 @@ function SettingsPage() {
           <p>Authentication, PostgreSQL 및 Row Level Security를 사용합니다.</p>
           <code>VITE_SUPABASE_URL</code>
           <code>VITE_SUPABASE_ANON_KEY</code>
+        </article>
+        <article className="panel setting">
+          <h2>운영 데이터 상태</h2>
+          <div className="setting-metrics"><span>프로젝트 <strong>{projects.length}</strong></span><span>고객사 <strong>{customers.length}</strong></span><span>리소스 <strong>{resources.length}</strong></span></div>
+          <p>모든 메뉴는 동일한 승인된 Supabase 포트폴리오 데이터를 사용합니다.</p>
         </article>
         <article className="panel setting">
           <h2>접근 제어</h2>
@@ -1192,8 +1229,8 @@ function SettingsPage() {
         <article className="panel setting">
           <h2>카테고리</h2>
           <p>
-            M365, Azure, Security, Copilot, Migration 등 운영 분류를
-            데이터베이스에서 관리할 수 있습니다.
+            M365, Azure, Security, Copilot, Migration 등 표준 운영 분류를
+            프로젝트 등록과 편집 화면에서 선택합니다.
           </p>
           <div className="category-chips">{categories.map((category) => <Badge key={category} tone="gray">{category}</Badge>)}</div>
         </article>

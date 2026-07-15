@@ -11,6 +11,14 @@ export function validateProject(project: Pick<Project,'customer'|'name'|'probabi
 }
 
 export function activeInMonth(project: Project, month: number, year = 2026) {
+  if (project.workPeriods?.length) {
+    const point = year * 12 + month
+    return project.workPeriods.some(period => {
+      const start = Number(period.startDate.slice(0,4)) * 12 + Number(period.startDate.slice(5,7))
+      const end = Number(period.endDate.slice(0,4)) * 12 + Number(period.endDate.slice(5,7))
+      return point >= start && point <= end
+    })
+  }
   if (project.workMonths) return year === 2026 && project.workMonths.includes(month)
   if (!project.startDate || !project.endDate) return false
   const point = year * 12 + month
@@ -28,8 +36,10 @@ export function projectWarnings(project: Project) {
   return warnings
 }
 
-export function allocationFor(resource: string, month: number, rows: Project[]) {
-  return rows.filter(p => p.resources.includes(resource) && activeInMonth(p, month)).length * 50
+export function allocationFor(resource: string, month: number, rows: Project[], year = 2026) {
+  return rows
+    .filter(p => p.resources.includes(resource) && activeInMonth(p, month, year))
+    .reduce((total, project) => total + (project.resourceAllocations?.[resource] ?? 50), 0)
 }
 
 export function toCsv(rows: Project[]) {

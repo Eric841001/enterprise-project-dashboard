@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
 import "./editor.css";
+import "./readability.css";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 createRoot(document.getElementById("root")!).render(

@@ -18,6 +18,7 @@ interface PortfolioContextValue {
   projects: Project[];
   resources: Resource[];
   customers: CustomerRow[];
+  role: "admin" | "manager" | "viewer";
   canEdit: boolean;
   loading: boolean;
   error: string;
@@ -54,6 +55,7 @@ interface ResourceRow {
 interface AssignmentRow {
   project_id: string;
   resource_id: string;
+  allocation_percentage: number;
 }
 interface WorkPeriodRow {
   project_id: string;
@@ -93,6 +95,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState("");
   const [canEdit, setCanEdit] = useState(false);
+  const [role, setRole] = useState<"admin" | "manager" | "viewer">("viewer");
 
   const refresh = useCallback(async () => {
     const client = supabase;
@@ -101,6 +104,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setResources(sampleResources);
       setCustomers(Array.from(new Set(sampleProjects.map((project) => project.customer))).map((name) => ({ id: name, name })));
       setCanEdit(false);
+      setRole("viewer");
       setLoading(false);
       return;
     }
@@ -116,6 +120,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setResources([]);
       setCustomers([]);
       setCanEdit(false);
+      setRole("viewer");
       setLoading(false);
       return;
     }
@@ -123,6 +128,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       profileResult.data.role === "admin" ||
         profileResult.data.role === "manager",
     );
+    setRole(profileResult.data.role);
     const [
       projectResult,
       customerResult,
@@ -143,7 +149,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         .select("id,name,role,primary_skill,available_capacity")
         .eq("employment_status", "active")
         .order("name"),
-      client.from("project_assignments").select("project_id,resource_id"),
+      client.from("project_assignments").select("project_id,resource_id,allocation_percentage"),
       client
         .from("project_work_periods")
         .select("project_id,start_date,end_date"),
@@ -188,6 +194,12 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           .filter((assignment) => assignment.project_id === row.id)
           .map((assignment) => resourceById.get(assignment.resource_id))
           .filter((name): name is string => Boolean(name));
+        const resourceAllocations = Object.fromEntries(
+          assignmentRows
+            .filter((assignment) => assignment.project_id === row.id)
+            .map((assignment) => [resourceById.get(assignment.resource_id), assignment.allocation_percentage])
+            .filter((entry): entry is [string, number] => Boolean(entry[0])),
+        );
         const periods = periodRows.filter(
           (period) => period.project_id === row.id,
         );
@@ -205,11 +217,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
             ? (resourceById.get(row.project_manager_id) ?? "미지정")
             : "미지정",
           resources: assigned,
+          resourceAllocations,
           risk: row.risk_level,
           scope: row.scope_summary ?? "범위 미정",
           phase: row.phase ?? "미정",
           updatedAt: row.updated_at.slice(0, 10),
           workMonths: periods.length ? monthsForPeriods(periods) : undefined,
+          workPeriods: periods.map((period) => ({ startDate: period.start_date, endDate: period.end_date })),
           importNote: row.import_note ?? undefined,
         };
       }),
@@ -221,8 +235,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
   const value = useMemo(
-    () => ({ projects, resources, customers, canEdit, loading, error, refresh }),
-    [projects, resources, customers, canEdit, loading, error, refresh],
+    () => ({ projects, resources, customers, role, canEdit, loading, error, refresh }),
+    [projects, resources, customers, role, canEdit, loading, error, refresh],
   );
   return (
     <PortfolioContext.Provider value={value}>

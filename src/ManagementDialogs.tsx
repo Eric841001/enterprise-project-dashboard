@@ -51,6 +51,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
   const [phase, setPhase] = useState("Planning");
   const [managerId, setManagerId] = useState("");
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
+  const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -74,6 +75,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     setPhase(project?.phase ?? "Planning");
     setManagerId(resources.find((resource) => resource.name === project?.manager)?.id ?? "");
     setSelectedResourceIds(resources.filter((resource) => project?.resources.includes(resource.name)).map((resource) => resource.id));
+    setAllocations(Object.fromEntries(resources.map((resource) => [resource.id, project?.resourceAllocations?.[resource.name] ?? 50])));
     setError("");
   }, [open, project, resources]);
 
@@ -106,20 +108,13 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
       if (result.error) { setError(result.error.message); setBusy(false); return; }
       projectId = result.data.id;
     }
-    const existingResult = await client.from("project_assignments").select("id,resource_id").eq("project_id", projectId);
+    const existingResult = await client.from("project_assignments").delete().eq("project_id", projectId);
     if (existingResult.error) { setError(existingResult.error.message); setBusy(false); return; }
-    const existing = existingResult.data ?? [];
     const selected = new Set(selectedResourceIds);
-    const deleteIds = existing.filter((row) => !selected.has(row.resource_id)).map((row) => row.id);
-    if (deleteIds.length) {
-      const result = await client.from("project_assignments").delete().in("id", deleteIds);
-      if (result.error) { setError(result.error.message); setBusy(false); return; }
-    }
     if (startDate && endDate) {
-      const existingIds = new Set(existing.map((row) => row.resource_id));
-      const inserts = resources.filter((resource) => selected.has(resource.id) && !existingIds.has(resource.id)).map((resource) => ({
+      const inserts = resources.filter((resource) => selected.has(resource.id)).map((resource) => ({
         project_id: projectId, resource_id: resource.id, role: resource.role,
-        allocation_percentage: 50, start_date: startDate, end_date: endDate,
+        allocation_percentage: allocations[resource.id] ?? 50, start_date: startDate, end_date: endDate,
       }));
       if (inserts.length) {
         const result = await client.from("project_assignments").insert(inserts);
@@ -146,7 +141,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
           <label>프로젝트 매니저<select value={managerId} onChange={(e) => setManagerId(e.target.value)}><option value="">미지정</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
           <label className="span-2">프로젝트 범위<textarea value={scope} onChange={(e) => setScope(e.target.value)} rows={3} /></label>
         </div>
-        <fieldset className="resource-picker"><legend>담당 리소스</legend>{resources.map((resource) => <label key={resource.id}><input type="checkbox" checked={selectedResourceIds.includes(resource.id)} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small></label>)}</fieldset>
+        <fieldset className="resource-picker"><legend>담당 리소스 및 배정률</legend>{resources.map((resource) => <label key={resource.id}><input type="checkbox" checked={selectedResourceIds.includes(resource.id)} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small>{selectedResourceIds.includes(resource.id) && <input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="1" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} />}</label>)}</fieldset>
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>취소</button><button className="primary" disabled={busy}>{busy ? "저장 중…" : project ? "변경 저장" : "프로젝트 등록"}</button></div>
       </form>
@@ -172,15 +167,20 @@ export type ReportKind = "월간 포트폴리오" | "확정 vs 파이프라인" 
 
 export function ReportDialog({ kind, onClose }: { kind: ReportKind | null; onClose: () => void }) {
   const { projects, resources } = usePortfolio();
+  const reportDate = new Date();
+  const reportYear = reportDate.getFullYear();
+  const reportMonth = reportDate.getMonth() + 1;
+  const staleThreshold = new Date(reportDate); staleThreshold.setDate(staleThreshold.getDate() - 14);
+  const staleDate = staleThreshold.toISOString().slice(0, 10);
   const rows = useMemo(() => {
     if (!kind) return [] as string[][];
-    if (kind === "리소스 활용률") return resources.map((resource) => [resource.name, resource.role, `${allocationFor(resource.name, 8, projects)}%`, resource.skill]);
+    if (kind === "리소스 활용률") return resources.map((resource) => [resource.name, resource.role, `${allocationFor(resource.name, reportMonth, projects, reportYear)}%`, resource.skill]);
     if (kind === "고객사 요약") return Array.from(new Set(projects.map((project) => project.customer))).map((customer) => { const items = projects.filter((project) => project.customer === customer); return [customer, String(items.length), String(items.filter((item) => item.probability === 100).length), String(items.filter((item) => item.probability < 100).length)]; });
     if (kind === "위험 및 이슈") return projects.filter((project) => project.risk !== "Low" || !project.startDate || !project.resources.length).map((project) => [project.customer, project.name, project.risk, !project.startDate ? "일정 미정" : !project.resources.length ? "리소스 미지정" : "위험 검토"]);
-    if (kind === "업데이트 준수") return [...projects].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((project) => [project.customer, project.name, project.updatedAt, project.updatedAt < "2026-07-01" ? "업데이트 필요" : "정상"]);
+    if (kind === "업데이트 준수") return [...projects].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((project) => [project.customer, project.name, project.updatedAt, project.updatedAt < staleDate ? "업데이트 필요" : "정상"]);
     return projects.filter((project) => kind !== "확정 vs 파이프라인" || project.probability > 0).map((project) => [project.customer, project.name, `${project.probability}%`, project.status, project.startDate ?? "미정", project.endDate ?? "미정"]);
-  }, [kind, projects, resources]);
-  const headers = kind === "리소스 활용률" ? ["리소스", "역할", "8월 활용률", "주요 기술"] : kind === "고객사 요약" ? ["고객사", "전체", "확정", "파이프라인"] : kind === "위험 및 이슈" ? ["고객사", "프로젝트", "위험", "검토 항목"] : kind === "업데이트 준수" ? ["고객사", "프로젝트", "최근 업데이트", "상태"] : ["고객사", "프로젝트", "확률", "상태", "시작일", "종료일"];
+  }, [kind, projects, resources, reportMonth, reportYear, staleDate]);
+  const headers = kind === "리소스 활용률" ? ["리소스", "역할", `${reportMonth}월 활용률`, "주요 기술"] : kind === "고객사 요약" ? ["고객사", "전체", "확정", "파이프라인"] : kind === "위험 및 이슈" ? ["고객사", "프로젝트", "위험", "검토 항목"] : kind === "업데이트 준수" ? ["고객사", "프로젝트", "최근 업데이트", "상태"] : ["고객사", "프로젝트", "확률", "상태", "시작일", "종료일"];
   function download() { if (!kind) return; const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map((cell) => '"' + String(cell).replaceAll('"', '""') + '"').join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click(); URL.revokeObjectURL(url); }
   return <Dialog open={Boolean(kind)} onClose={onClose} title={kind ?? "리포트"} eyebrow="MANAGEMENT REPORT" wide><div className="report-actions"><button className="secondary" onClick={download}><Download /> CSV 내보내기</button><button className="secondary" onClick={() => window.print()}>인쇄 / PDF</button></div><div className="table-wrap report-table"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div><p className="dialog-note">현재 승인된 포트폴리오 데이터를 기준으로 생성되었습니다. 총 {rows.length}개 항목입니다.</p></Dialog>;
 }
