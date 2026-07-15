@@ -72,14 +72,22 @@ let resources: Resource[] = [];
 
 const statusKo: Record<string, string> = {
   Lead: "리드",
+  Qualified: "검증",
   Proposal: "제안",
+  Negotiation: "협상",
   Confirmed: "확정",
   Planning: "계획",
   "In Progress": "진행 중",
   "At Risk": "위험",
   Completed: "완료",
+  Cancelled: "취소",
+  Archived: "보관",
   "On Hold": "보류",
 };
+const projectStatuses = [
+  "Lead", "Qualified", "Proposal", "Negotiation", "Confirmed", "Planning",
+  "In Progress", "On Hold", "At Risk", "Completed", "Cancelled", "Archived",
+] as const;
 const colors = [
   "#0b69a3",
   "#16a085",
@@ -113,16 +121,29 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!supabase) return;
     setBusy(true);
+    setError("");
+    setNotice("");
     const { error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     setError(authError?.message ?? "");
+    setBusy(false);
+  }
+  async function resetPassword() {
+    if (!supabase || !email) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+    if (resetError) setError(resetError.message);
+    else setNotice("비밀번호 재설정 안내 메일을 보냈습니다.");
     setBusy(false);
   }
   return (
@@ -161,15 +182,18 @@ function Login() {
             required
           />
         </label>
-        {error && <p className="form-error">{error}</p>}
+        <div aria-live="polite">
+          {error && <p className="form-error">{error}</p>}
+          {notice && <p className="form-success">{notice}</p>}
+        </div>
         <button className="primary wide" disabled={busy}>
           {busy ? "확인 중…" : "로그인"}
         </button>
         <button
           type="button"
           className="text-button"
-          onClick={() => void supabase?.auth.resetPasswordForEmail(email)}
-          disabled={!email}
+          onClick={() => void resetPassword()}
+          disabled={!email || busy}
         >
           비밀번호 재설정
         </button>
@@ -193,7 +217,7 @@ function Shell() {
   projects = portfolio.projects;
   resources = portfolio.resources;
   const [open, setOpen] = useState(false);
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => localStorage.getItem("portfolio-theme") === "dark");
   const [globalQuery, setGlobalQuery] = useState("");
   const [showAlerts, setShowAlerts] = useState(false);
   const location = useLocation();
@@ -203,6 +227,7 @@ function Shell() {
     : [];
   const alerts = portfolio.projects.filter((project) => project.risk === "High" || !project.startDate || !project.resources.length);
   useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => localStorage.setItem("portfolio-theme", dark ? "dark" : "light"), [dark]);
   return (
     <div className={dark ? "app dark" : "app"}>
       <aside className={open ? "sidebar open" : "sidebar"}>
@@ -269,6 +294,9 @@ function Shell() {
                   </Link>
                 ))}
               </div>
+            )}
+            {globalQuery.trim() && globalMatches.length === 0 && (
+              <div className="search-results search-empty" role="status">일치하는 프로젝트가 없습니다.</div>
             )}
           </div>
           <div className="header-actions">
@@ -363,11 +391,13 @@ function statusTone(status: string) {
     ? "teal"
     : status === "Confirmed"
       ? "blue"
-      : status === "Proposal"
+      : status === "Proposal" || status === "Qualified" || status === "Negotiation"
         ? "purple"
         : status === "At Risk"
           ? "red"
-          : "gray";
+          : status === "Cancelled"
+            ? "red"
+            : "gray";
 }
 function riskTone(risk: RiskLevel) {
   return risk === "High" ? "red" : risk === "Medium" ? "amber" : "teal";
@@ -650,7 +680,7 @@ function Projects() {
         </label>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="all">모든 상태</option>
-          {["Lead", "Proposal", "Confirmed", "Planning", "In Progress", "At Risk", "Completed", "On Hold"].map(
+          {projectStatuses.map(
             (s) => (
               <option key={s}>{s}</option>
             ),
@@ -928,7 +958,7 @@ function Schedule() {
           <option value="100">100% 확정</option>
           <option value="50">50% 파이프라인</option>
         </select>
-        <select value={scheduleStatus} onChange={(event) => setScheduleStatus(event.target.value)}><option value="all">모든 상태</option>{["Lead", "Proposal", "Confirmed", "Planning", "In Progress", "At Risk", "Completed", "On Hold"].map((item) => <option key={item}>{item}</option>)}</select>
+        <select value={scheduleStatus} onChange={(event) => setScheduleStatus(event.target.value)}><option value="all">모든 상태</option>{projectStatuses.map((item) => <option key={item}>{statusKo[item]}</option>)}</select>
         <select value={scheduleCategory} onChange={(event) => setScheduleCategory(event.target.value)}><option value="all">모든 카테고리</option>{Array.from(new Set(projects.map((project) => project.category))).map((item) => <option key={item}>{item}</option>)}</select>
         <div className="timeline-legend">
           <span>

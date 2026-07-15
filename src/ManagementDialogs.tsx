@@ -13,7 +13,8 @@ const categories = [
 ];
 
 const statuses: ProjectStatus[] = [
-  "Lead", "Proposal", "Confirmed", "Planning", "In Progress", "At Risk", "Completed", "On Hold",
+  "Lead", "Qualified", "Proposal", "Negotiation", "Confirmed", "Planning",
+  "In Progress", "On Hold", "At Risk", "Completed", "Cancelled", "Archived",
 ];
 
 interface CustomerOption { id: string; name: string }
@@ -21,6 +22,15 @@ interface CustomerOption { id: string; name: string }
 function Dialog({ title, eyebrow, open, onClose, children, wide = false }: {
   title: string; eyebrow: string; open: boolean; onClose: () => void; children: ReactNode; wide?: boolean;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
@@ -88,6 +98,11 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     const client = supabase;
     if (!client) return;
     if (!customerId || !name.trim()) { setError("고객사와 프로젝트명은 필수입니다."); return; }
+    if (!Number.isFinite(probability) || probability < 0 || probability > 100) { setError("수주 확률은 0~100 사이여야 합니다."); return; }
+    if (!Number.isFinite(progress) || progress < 0 || progress > 100) { setError("진행률은 0~100 사이여야 합니다."); return; }
+    if (selectedResourceIds.some((id) => !Number.isFinite(allocations[id]) || allocations[id] < 1 || allocations[id] > 100)) {
+      setError("담당 리소스 배정률은 1~100 사이여야 합니다."); return;
+    }
     if (startDate && endDate && startDate > endDate) { setError("시작일은 종료일보다 늦을 수 없습니다."); return; }
     if (["Confirmed", "Planning", "In Progress"].includes(status) && (!startDate || !endDate)) {
       setError("확정·계획·진행 프로젝트는 시작일과 종료일이 필요합니다."); return;

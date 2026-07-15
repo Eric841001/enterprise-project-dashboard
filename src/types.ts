@@ -1,4 +1,4 @@
-export type ProjectStatus = 'Lead' | 'Proposal' | 'Confirmed' | 'Planning' | 'In Progress' | 'At Risk' | 'Completed' | 'On Hold'
+export type ProjectStatus = 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Confirmed' | 'Planning' | 'In Progress' | 'On Hold' | 'At Risk' | 'Completed' | 'Cancelled' | 'Archived'
 export type RiskLevel = 'Low' | 'Medium' | 'High'
 
 export interface Project {
