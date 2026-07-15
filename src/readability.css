@@ -40,6 +40,8 @@ td { padding: 15px; }
 .text-button { font-size: 13px; }
 .setting code { font-size: 11px; }
 .muted,.form-error { font-size: 13px; }
+.login-card label { font-size: 13px; }
+.login-card input { font-size: 14px; }
 .form-grid label,.resource-picker legend { font-size: 12px; }
 .form-grid input,.form-grid select,.form-grid textarea { font-size: 14px; }
 .resource-picker small,.dialog-note { font-size: 10px; }
