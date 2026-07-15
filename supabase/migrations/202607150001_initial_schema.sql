@@ -4,7 +4,7 @@ create type public.project_status as enum ('Lead','Qualified','Proposal','Negoti
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  display_name text not null default '', role public.app_role not null default 'viewer', created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  display_name text not null default '', role public.app_role not null default 'viewer', is_approved boolean not null default false, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 create table public.customers (
   id uuid primary key default gen_random_uuid(), name text not null unique, english_name text, industry text, tier text, account_owner uuid references public.profiles(id), contact_name text, contact_email text, contact_phone text, website text, notes text, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
@@ -18,6 +18,10 @@ create table public.projects (
 create table public.project_assignments (
   id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(id) on delete cascade, resource_id uuid not null references public.resources(id), role text not null, allocation_percentage smallint not null check (allocation_percentage between 0 and 100), start_date date not null, end_date date not null, unique(project_id,resource_id,start_date), check(start_date <= end_date)
 );
+create table public.project_work_periods (
+  id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(id) on delete cascade,
+  start_date date not null, end_date date not null, label text, unique(project_id,start_date,end_date), check(start_date <= end_date)
+);
 create table public.project_milestones (id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(id) on delete cascade, title text not null, due_date date, status text not null default 'planned', notes text);
 create table public.project_deliverables (id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(id) on delete cascade, title text not null, due_date date, status text not null default 'planned', owner_id uuid references public.resources(id));
 create table public.project_risks (id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(id) on delete cascade, title text not null, description text, impact text, probability text, mitigation text, owner_id uuid references public.resources(id), due_date date, status text not null default 'open');
@@ -29,18 +33,26 @@ create index projects_status_idx on public.projects(status) where not is_archive
 create index projects_dates_idx on public.projects(start_date,end_date);
 create index assignments_resource_dates_idx on public.project_assignments(resource_id,start_date,end_date);
 
-create function public.current_role() returns public.app_role language sql stable security definer set search_path=public as $$ select coalesce((select role from public.profiles where id=auth.uid()),'viewer'::public.app_role) $$;
+create function public.is_approved_user() returns boolean language sql stable security definer set search_path=public as $$ select coalesce((select is_approved from public.profiles where id=auth.uid()),false) $$;
+create function public.current_role() returns public.app_role language sql stable security definer set search_path=public as $$ select coalesce((select role from public.profiles where id=auth.uid() and is_approved),'viewer'::public.app_role) $$;
+create function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+  insert into public.profiles(id,display_name,role,is_approved)
+  values(new.id,coalesce(new.raw_user_meta_data->>'display_name',new.email,''),'viewer',false)
+  on conflict(id) do nothing;
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();
 create function public.touch_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
 create trigger projects_touch before update on public.projects for each row execute function public.touch_updated_at();
 create trigger customers_touch before update on public.customers for each row execute function public.touch_updated_at();
 create trigger resources_touch before update on public.resources for each row execute function public.touch_updated_at();
 
-alter table public.profiles enable row level security; alter table public.customers enable row level security; alter table public.resources enable row level security; alter table public.projects enable row level security; alter table public.project_assignments enable row level security; alter table public.project_milestones enable row level security; alter table public.project_deliverables enable row level security; alter table public.project_risks enable row level security; alter table public.project_notes enable row level security; alter table public.project_activity_logs enable row level security; alter table public.app_settings enable row level security;
-create policy profiles_read on public.profiles for select to authenticated using (true);
-create policy profiles_self_update on public.profiles for update to authenticated using (id=auth.uid()) with check (id=auth.uid() and role=(select role from public.profiles where id=auth.uid()));
+alter table public.profiles enable row level security; alter table public.customers enable row level security; alter table public.resources enable row level security; alter table public.projects enable row level security; alter table public.project_assignments enable row level security; alter table public.project_work_periods enable row level security; alter table public.project_milestones enable row level security; alter table public.project_deliverables enable row level security; alter table public.project_risks enable row level security; alter table public.project_notes enable row level security; alter table public.project_activity_logs enable row level security; alter table public.app_settings enable row level security;
+create policy profiles_read on public.profiles for select to authenticated using (id=auth.uid() or public.current_role()='admin');
 create policy profiles_admin on public.profiles for all to authenticated using (public.current_role()='admin') with check (public.current_role()='admin');
 
-do $$ declare t text; begin foreach t in array array['customers','resources','projects','project_assignments','project_milestones','project_deliverables','project_risks','project_notes','project_activity_logs','app_settings'] loop execute format('create policy %I_read on public.%I for select to authenticated using (true)',t,t); execute format('create policy %I_write on public.%I for all to authenticated using (public.current_role() in (''admin'',''manager'')) with check (public.current_role() in (''admin'',''manager''))',t,t); end loop; end $$;
+do $$ declare t text; begin foreach t in array array['customers','resources','projects','project_assignments','project_work_periods','project_milestones','project_deliverables','project_risks','project_notes','project_activity_logs','app_settings'] loop execute format('create policy %I_read on public.%I for select to authenticated using (public.is_approved_user())',t,t); execute format('create policy %I_write on public.%I for all to authenticated using (public.current_role() in (''admin'',''manager'')) with check (public.current_role() in (''admin'',''manager''))',t,t); end loop; end $$;
 
 revoke all on all tables in schema public from anon;
 grant select,insert,update,delete on all tables in schema public to authenticated;

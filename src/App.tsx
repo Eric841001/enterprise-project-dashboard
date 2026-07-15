@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AlertTriangle, BarChart3, Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, CircleHelp, Download, FileBarChart, LayoutDashboard, LogOut, Menu, Moon, Plus, Search, Settings, Sun, Users, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { projects, resources } from './data'
+import { PortfolioProvider, usePortfolio } from './portfolio-context'
 import { activeInMonth, allocationFor, projectWarnings, toCsv } from './lib/portfolio'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
-import type { Project, RiskLevel } from './types'
+import type { Project, Resource, RiskLevel } from './types'
+
+let projects: Project[] = []
+let resources: Resource[] = []
 
 const statusKo: Record<string,string> = { Lead:'리드', Proposal:'제안', Confirmed:'확정', Planning:'계획', 'In Progress':'진행 중', 'At Risk':'위험', Completed:'완료', 'On Hold':'보류' }
 const colors = ['#0b69a3','#16a085','#7c5ce5','#e69a2d','#d9534f','#5b6b7b']
@@ -36,6 +39,9 @@ const nav = [
 ] as const
 
 function Shell() {
+  const portfolio=usePortfolio()
+  projects=portfolio.projects
+  resources=portfolio.resources
   const [open,setOpen]=useState(false); const [dark,setDark]=useState(false); const location=useLocation()
   useEffect(()=>setOpen(false),[location.pathname])
   return <div className={dark?'app dark':'app'}><aside className={open?'sidebar open':'sidebar'}><div className="logo"><div className="brand-mark small">P</div><div><strong>Portfolio</strong><span>Delivery Office</span></div><button className="icon mobile-only" onClick={()=>setOpen(false)} aria-label="메뉴 닫기"><X/></button></div><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={to} end={to==='/'}><Icon/><span>{label}</span></NavLink>)}</nav><div className="side-foot"><div className="avatar">AD</div><div><strong>관리자</strong><span>{isSupabaseConfigured?'Secure workspace':'읽기 전용 미리보기'}</span></div></div></aside><div className="main"><header><button className="icon mobile-only" onClick={()=>setOpen(true)} aria-label="메뉴 열기"><Menu/></button><div className="global-search"><Search/><input placeholder="프로젝트, 고객사, 담당자 검색" aria-label="전체 검색"/></div><div className="header-actions"><span className="sync">샘플 데이터</span><button className="icon" onClick={()=>setDark(!dark)} aria-label="테마 변경">{dark?<Sun/>:<Moon/>}</button><button className="icon"><Bell/></button>{supabase&&<button className="icon" onClick={()=>void supabase?.auth.signOut()} aria-label="로그아웃"><LogOut/></button>}</div></header><main className="content"><Routes><Route path="/" element={<Dashboard/>}/><Route path="/projects" element={<Projects/>}/><Route path="/projects/:id" element={<ProjectDetail/>}/><Route path="/schedule" element={<Schedule/>}/><Route path="/resources" element={<Resources/>}/><Route path="/customers" element={<Customers/>}/><Route path="/reports" element={<Reports/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></main></div>{open&&<button className="backdrop" onClick={()=>setOpen(false)} aria-label="메뉴 닫기"/>}</div>
@@ -47,6 +53,9 @@ function statusTone(status:string){return status==='In Progress'?'teal':status==
 function riskTone(risk:RiskLevel){return risk==='High'?'red':risk==='Medium'?'amber':'teal'}
 
 function Dashboard(){
+  const {projects,loading,error}=usePortfolio()
+  if(loading)return <div className="center-state">승인된 포트폴리오 데이터를 불러오는 중…</div>
+  if(error)return <div className="warning"><AlertTriangle/>데이터를 불러오지 못했습니다. 계정 승인 상태와 Supabase 설정을 확인하세요. ({error})</div>
   const active=projects.filter(p=>['Confirmed','Planning','In Progress'].includes(p.status)); const high=projects.filter(p=>p.risk==='High'); const assigned=new Set(projects.flatMap(p=>p.resources)).size
   const statusData=Object.entries(projects.reduce<Record<string,number>>((a,p)=>(a[p.status]=(a[p.status]||0)+1,a),{})).map(([name,value])=>({name:statusKo[name],value}))
   const monthly=Array.from({length:12},(_,i)=>({month:`${i+1}월`,projects:projects.filter(p=>activeInMonth(p,i+1)).length}))
@@ -56,7 +65,7 @@ function Kpi({label,value,note,trend,danger}:{label:string,value:number|string,n
 function PanelHead({title,detail}:{title:string,detail:string}){return <div className="panel-head"><div><h2>{title}</h2><p>{detail}</p></div><button className="icon"><Menu/></button></div>}
 function Attention({icon,tone,title,text}:{icon:ReactNode,tone:string,title:string,text:string}){return <div className="attention-row"><div className={`signal ${tone}`}>{icon}</div><div><strong>{title}</strong><span>{text}</span></div><ChevronRight/></div>}
 
-function useProjectFilter(){const [query,setQuery]=useState(''); const [status,setStatus]=useState('all'); const filtered=useMemo(()=>projects.filter(p=>(status==='all'||p.status===status)&&`${p.customer} ${p.name} ${p.resources.join(' ')}`.toLowerCase().includes(query.toLowerCase())),[query,status]); return {query,setQuery,status,setStatus,filtered}}
+function useProjectFilter(){const {projects}=usePortfolio();const [query,setQuery]=useState(''); const [status,setStatus]=useState('all'); const filtered=useMemo(()=>projects.filter(p=>(status==='all'||p.status===status)&&`${p.customer} ${p.name} ${p.resources.join(' ')}`.toLowerCase().includes(query.toLowerCase())),[projects,query,status]); return {query,setQuery,status,setStatus,filtered}}
 function Projects(){const {query,setQuery,status,setStatus,filtered}=useProjectFilter();function download(){const blob=new Blob([toCsv(filtered)],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='projects-2026.csv';a.click();URL.revokeObjectURL(a.href)}return <><PageTitle eyebrow="PORTFOLIO MANAGEMENT" title="프로젝트" desc={`${filtered.length}개의 프로젝트를 검색하고 관리합니다.`} action={<button className="primary" disabled={!isSupabaseConfigured} title={!isSupabaseConfigured?'Supabase 연결 후 사용 가능':''}><Plus/> 프로젝트 등록</button>}/><div className="toolbar"><label className="search-box"><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="프로젝트 또는 고객사 검색"/></label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">모든 상태</option>{['Lead','Proposal','Confirmed','Planning','In Progress'].map(s=><option key={s}>{s}</option>)}</select><button className="secondary" onClick={download}><Download/> CSV 내보내기</button></div><div className="panel table-wrap"><table><thead><tr><th>고객사 / 프로젝트</th><th>상태</th><th>확률</th><th>기간</th><th>진행률</th><th>담당 리소스</th><th>위험</th><th></th></tr></thead><tbody>{filtered.map(p=><tr key={p.id}><td><Link className="project-name" to={`/projects/${p.id}`}><strong>{p.customer}</strong><span>{p.name}</span></Link></td><td><Badge tone={statusTone(p.status)}>{statusKo[p.status]}</Badge></td><td><strong>{p.probability}%</strong></td><td className="nowrap">{p.startDate?.slice(0,7)??'미정'} — {p.endDate?.slice(0,7)??'미정'}</td><td><div className="progress"><i style={{width:`${p.progress}%`}}/></div><small>{p.progress}%</small></td><td><AvatarStack names={p.resources}/></td><td><Badge tone={riskTone(p.risk)}>{p.risk}</Badge></td><td><Link to={`/projects/${p.id}`} className="icon"><ChevronRight/></Link></td></tr>)}</tbody></table>{filtered.length===0&&<div className="empty">조건에 맞는 프로젝트가 없습니다.</div>}</div></>}
 function AvatarStack({names}:{names:string[]}){return names.length?<div className="avatars">{names.slice(0,3).map(n=><span key={n} title={n}>{n.slice(0,2).toUpperCase()}</span>)}<small>{names.join(', ')}</small></div>:<Badge tone="amber">미지정</Badge>}
 function ProjectRows({rows}:{rows:Project[]}){return <div>{rows.map(p=><Link className="mini-project" to={`/projects/${p.id}`} key={p.id}><div className="project-icon">{p.customer.slice(0,1)}</div><div><strong>{p.customer}</strong><span>{p.name}</span></div><Badge tone={statusTone(p.status)}>{statusKo[p.status]}</Badge><span>{p.updatedAt.slice(5).replace('-','.')}</span><ChevronRight/></Link>)}</div>}
@@ -73,4 +82,4 @@ function Reports(){const confirmed=projects.filter(p=>p.probability===100).lengt
 
 function SettingsPage(){return <><PageTitle eyebrow="WORKSPACE CONTROL" title="설정" desc="인증, 데이터 연결과 포트폴리오 기준을 관리합니다."/><section className="settings-grid"><article className="panel setting"><h2>Supabase 연결</h2><Badge tone={isSupabaseConfigured?'teal':'amber'}>{isSupabaseConfigured?'연결됨':'설정 필요'}</Badge><p>Authentication, PostgreSQL 및 Row Level Security를 사용합니다.</p><code>VITE_SUPABASE_URL</code><code>VITE_SUPABASE_ANON_KEY</code></article><article className="panel setting"><h2>접근 제어</h2><Badge tone="blue">Private</Badge><p>모든 프로젝트 페이지는 기본적으로 인증된 사용자만 접근합니다.</p><ul><li>Admin — 전체 관리</li><li>Manager — 운영 데이터 관리</li><li>Viewer — 읽기 전용</li></ul></article><article className="panel setting"><h2>카테고리</h2><p>M365, Azure, Security, Copilot, Migration 등 운영 분류를 데이터베이스에서 관리할 수 있습니다.</p></article></section></>}
 
-export default function App(){return <AuthGate><Shell/></AuthGate>}
+export default function App(){return <AuthGate><PortfolioProvider><Shell/></PortfolioProvider></AuthGate>}

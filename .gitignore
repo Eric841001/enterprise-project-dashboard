@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.local
+supabase/*.local.sql
 coverage/
 *.tsbuildinfo
 .DS_Store

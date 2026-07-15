@@ -10,4 +10,4 @@
 - `project_activity_logs`: 변경 이력
 - `app_settings`: 관리 설정
 
-Viewer는 인증된 읽기만, Manager와 Admin은 운영 데이터 쓰기가 가능합니다. 프로필 역할 변경은 본인 업데이트 정책에서 보존되며 Admin만 전체 관리합니다. 운영 전 Supabase SQL linter와 Security Advisor로 정책을 재검토하십시오.
+`is_approved=true`인 Viewer만 운영 데이터를 읽을 수 있고, 승인된 Manager와 Admin만 운영 데이터를 쓸 수 있습니다. 신규 인증 사용자는 기본적으로 미승인 Viewer이며 Admin이 승인과 역할을 관리합니다. 운영 전 Supabase SQL linter와 Security Advisor로 정책을 재검토하십시오.
