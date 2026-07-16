@@ -70,8 +70,23 @@ export function projectWarnings(project: Project) {
 
 export function allocationFor(resource: string, month: number, rows: Project[], year = 2026) {
   return rows
-    .filter(p => p.resources.includes(resource) && activeInMonth(p, month, year))
-    .reduce((total, project) => total + (project.resourceAllocations?.[resource] ?? 50), 0)
+    .filter(p => p.resources.includes(resource))
+    .reduce((total, project) => {
+      const assignments = project.resourceAssignments?.[resource]
+      if (assignments?.length) {
+        const point = year * 12 + month
+        return total + assignments
+          .filter(assignment => {
+            const start = Number(assignment.startDate.slice(0,4)) * 12 + Number(assignment.startDate.slice(5,7))
+            const end = Number(assignment.endDate.slice(0,4)) * 12 + Number(assignment.endDate.slice(5,7))
+            return point >= start && point <= end
+          })
+          .reduce((sum, assignment) => sum + assignment.allocation, 0)
+      }
+      return activeInMonth(project, month, year)
+        ? total + (project.resourceAllocations?.[resource] ?? 50)
+        : total
+    }, 0)
 }
 
 export function toCsv(rows: Project[]) {

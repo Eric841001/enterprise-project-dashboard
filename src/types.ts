@@ -17,6 +17,7 @@ export interface Project {
   manager: string
   resources: string[]
   resourceAllocations?: Record<string, number>
+  resourceAssignments?: Record<string, Array<{ allocation: number; startDate: string; endDate: string }>>
   risk: RiskLevel
   scope: string
   phase: string

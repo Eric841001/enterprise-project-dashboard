@@ -58,6 +58,8 @@ interface AssignmentRow {
   project_id: string;
   resource_id: string;
   allocation_percentage: number;
+  start_date: string;
+  end_date: string;
 }
 interface WorkPeriodRow {
   project_id: string;
@@ -173,7 +175,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         .select("id,name,role,primary_skill,available_capacity")
         .eq("employment_status", "active")
         .order("name"),
-      client.from("project_assignments").select("project_id,resource_id,allocation_percentage"),
+      client.from("project_assignments").select("project_id,resource_id,allocation_percentage,start_date,end_date"),
       client
         .from("project_work_periods")
         .select("project_id,start_date,end_date"),
@@ -214,16 +216,28 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     );
     setProjects(
       projectRows.map((row) => {
-        const assigned = assignmentRows
+        const assigned = [...new Set(assignmentRows
           .filter((assignment) => assignment.project_id === row.id)
           .map((assignment) => resourceById.get(assignment.resource_id))
-          .filter((name): name is string => Boolean(name));
+          .filter((name): name is string => Boolean(name)))];
         const resourceAllocations = Object.fromEntries(
           assignmentRows
             .filter((assignment) => assignment.project_id === row.id)
             .map((assignment) => [resourceById.get(assignment.resource_id), assignment.allocation_percentage])
             .filter((entry): entry is [string, number] => Boolean(entry[0])),
         );
+        const resourceAssignments = assignmentRows
+          .filter((assignment) => assignment.project_id === row.id)
+          .reduce<Record<string, Array<{ allocation: number; startDate: string; endDate: string }>>>((result, assignment) => {
+            const name = resourceById.get(assignment.resource_id);
+            if (!name) return result;
+            (result[name] ??= []).push({
+              allocation: assignment.allocation_percentage,
+              startDate: assignment.start_date,
+              endDate: assignment.end_date,
+            });
+            return result;
+          }, {});
         const periods = periodRows.filter(
           (period) => period.project_id === row.id,
         );
@@ -251,6 +265,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
             : "미지정",
           resources: assigned,
           resourceAllocations,
+          resourceAssignments,
           risk: row.risk_level,
           scope: row.scope_summary ?? "범위 미정",
           phase: row.phase ?? "미정",

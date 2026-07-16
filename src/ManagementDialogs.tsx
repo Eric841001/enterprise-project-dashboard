@@ -63,6 +63,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
   const [managerId, setManagerId] = useState("");
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [assignmentDates, setAssignmentDates] = useState<Record<string, { startDate: string; endDate: string }>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -88,11 +89,25 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     setManagerId(resources.find((resource) => resource.name === project?.manager)?.id ?? "");
     setSelectedResourceIds(resources.filter((resource) => project?.resources.includes(resource.name)).map((resource) => resource.id));
     setAllocations(Object.fromEntries(resources.map((resource) => [resource.id, project?.resourceAllocations?.[resource.name] ?? 50])));
+    setAssignmentDates(Object.fromEntries(resources.map((resource) => {
+      const assignment = project?.resourceAssignments?.[resource.name]?.[0];
+      return [resource.id, {
+        startDate: assignment?.startDate ?? project?.startDate ?? "",
+        endDate: assignment?.endDate ?? project?.endDate ?? "",
+      }];
+    })));
     setError("");
   }, [open, project, resources]);
 
   function toggleResource(id: string) {
-    setSelectedResourceIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setSelectedResourceIds((current) => {
+      if (current.includes(id)) return current.filter((item) => item !== id);
+      setAssignmentDates((dates) => ({
+        ...dates,
+        [id]: dates[id]?.startDate && dates[id]?.endDate ? dates[id] : { startDate, endDate },
+      }));
+      return [...current, id];
+    });
   }
 
   async function submit(event: FormEvent) {
@@ -104,6 +119,9 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     if (!Number.isFinite(progress) || progress < 0 || progress > 100) { setError("진행률은 0~100 사이여야 합니다."); return; }
     if (selectedResourceIds.some((id) => !Number.isFinite(allocations[id]) || allocations[id] < 1 || allocations[id] > 100)) {
       setError("담당 리소스 배정률은 1~100 사이여야 합니다."); return;
+    }
+    if (selectedResourceIds.some((id) => !assignmentDates[id]?.startDate || !assignmentDates[id]?.endDate || assignmentDates[id].startDate > assignmentDates[id].endDate)) {
+      setError("담당 리소스별 올바른 배정 시작일과 종료일을 입력해 주세요."); return;
     }
     if (startDate && endDate && startDate > endDate) { setError("시작일은 종료일보다 늦을 수 없습니다."); return; }
     if (["Confirmed", "Planning", "In Progress"].includes(status) && (!startDate || !endDate)) {
@@ -128,10 +146,12 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     const existingResult = await client.from("project_assignments").delete().eq("project_id", projectId);
     if (existingResult.error) { setError(existingResult.error.message); setBusy(false); return; }
     const selected = new Set(selectedResourceIds);
-    if (startDate && endDate) {
+    if (selectedResourceIds.length) {
       const inserts = resources.filter((resource) => selected.has(resource.id)).map((resource) => ({
         project_id: projectId, resource_id: resource.id, role: resource.role,
-        allocation_percentage: allocations[resource.id] ?? 50, start_date: startDate, end_date: endDate,
+        allocation_percentage: allocations[resource.id] ?? 50,
+        start_date: assignmentDates[resource.id].startDate,
+        end_date: assignmentDates[resource.id].endDate,
       }));
       if (inserts.length) {
         const result = await client.from("project_assignments").insert(inserts);
@@ -159,7 +179,17 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
           <label>프로젝트 매니저<select value={managerId} onChange={(e) => setManagerId(e.target.value)}><option value="">미지정</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
           <label className="span-2">프로젝트 범위<textarea value={scope} onChange={(e) => setScope(e.target.value)} rows={3} /></label>
         </div>
-        <fieldset className="resource-picker"><legend>담당 리소스 및 배정률</legend>{resources.map((resource) => <label key={resource.id}><input type="checkbox" checked={selectedResourceIds.includes(resource.id)} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small>{selectedResourceIds.includes(resource.id) && <input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="1" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} />}</label>)}</fieldset>
+        <fieldset className="resource-picker"><legend>담당 리소스·배정률·배정기간</legend>{resources.map((resource) => {
+          const selected = selectedResourceIds.includes(resource.id);
+          return <div className={`resource-assignment-card ${selected ? "selected" : ""}`} key={resource.id}>
+            <label className="resource-toggle"><input type="checkbox" checked={selected} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small></label>
+            {selected && <div className="assignment-fields">
+              <label>배정률<input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="1" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} /></label>
+              <label>배정 시작일<input aria-label={`${resource.name} 배정 시작일`} type="date" value={assignmentDates[resource.id]?.startDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], startDate: event.target.value } }))} /></label>
+              <label>배정 종료일<input aria-label={`${resource.name} 배정 종료일`} type="date" value={assignmentDates[resource.id]?.endDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], endDate: event.target.value } }))} /></label>
+            </div>}
+          </div>;
+        })}</fieldset>
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>취소</button><button className="primary" disabled={busy}>{busy ? "저장 중…" : project ? "변경 저장" : "프로젝트 등록"}</button></div>
       </form>

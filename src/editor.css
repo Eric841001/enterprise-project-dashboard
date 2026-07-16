@@ -90,8 +90,13 @@
 .form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus { border-color: #0b76ac; box-shadow: 0 0 0 3px #0b76ac18; }
 .resource-picker { border: 1px solid var(--line); border-radius: 10px; margin: 18px 0 0; padding: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .resource-picker legend { color: var(--muted); font-size: 10px; font-weight: 800; padding: 0 6px; }
-.resource-picker label { display: grid; grid-template-columns: 18px 1fr; gap: 3px 7px; align-items: center; padding: 8px; border-radius: 7px; background: var(--bg); cursor: pointer; }
-.resource-picker small { grid-column: 2; color: var(--muted); font-size: 8px; }
+.resource-assignment-card { padding: 9px; border: 1px solid transparent; border-radius: 8px; background: var(--bg); }
+.resource-assignment-card.selected { border-color: #9dd7e4; }
+.resource-toggle { display: grid; grid-template-columns: 18px 1fr; gap: 3px 7px; align-items: center; cursor: pointer; }
+.resource-toggle small { grid-column: 2; color: var(--muted); font-size: 8px; }
+.assignment-fields { display: grid; gap: 7px; margin-top: 9px; }
+.assignment-fields label { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 6px; color: var(--muted); font-size: 9px; cursor: default; }
+.assignment-fields input { min-width: 0; width: 100%; padding: 6px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
 .report-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 18px 0 10px; }
 .report-table { max-height: 55vh; border: 1px solid var(--line); border-radius: 9px; }
 

@@ -55,7 +55,7 @@ td { padding: 15px; }
 .setting-metrics span { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 8px; background: var(--bg); color: var(--muted); font-size: 11px; }
 .setting-metrics strong { color: inherit; font-size: 20px; }
 
-.allocation-input { grid-column: 2; width: 88px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+.allocation-input { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
 
 @media (max-width: 760px) {
   .page-title h1 { font-size: 29px; }

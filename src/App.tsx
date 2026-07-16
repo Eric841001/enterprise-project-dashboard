@@ -891,7 +891,7 @@ function ProjectDetail() {
                 <div className="avatar">{n.slice(0, 2)}</div>
                 <div>
                   <strong>{n}</strong>
-                  <span>할당 {p.resourceAllocations?.[n] ?? 50}% · 프로젝트 기간</span>
+                  <span>{p.resourceAssignments?.[n]?.map((assignment) => `할당 ${assignment.allocation}% · ${assignment.startDate}~${assignment.endDate}`).join(" / ") ?? `할당 ${p.resourceAllocations?.[n] ?? 50}% · 프로젝트 기간`}</span>
                 </div>
               </div>
             ))
