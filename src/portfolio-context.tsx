@@ -110,11 +110,33 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     setError("");
+    const { data: authData, error: authError } = await client.auth.getUser();
+    if (authError || !authData.user) {
+      setError("로그인 세션을 확인할 수 없습니다. 다시 로그인해 주세요.");
+      setProjects([]);
+      setResources([]);
+      setCustomers([]);
+      setCanEdit(false);
+      setRole("viewer");
+      setLoading(false);
+      return;
+    }
     const profileResult = await client
       .from("profiles")
       .select("is_approved,role")
+      .eq("id", authData.user.id)
       .single();
-    if (profileResult.error || !profileResult.data?.is_approved) {
+    if (profileResult.error) {
+      setError(`계정 권한을 확인하지 못했습니다: ${profileResult.error.message}`);
+      setProjects([]);
+      setResources([]);
+      setCustomers([]);
+      setCanEdit(false);
+      setRole("viewer");
+      setLoading(false);
+      return;
+    }
+    if (!profileResult.data?.is_approved) {
       setError("이 계정은 아직 포트폴리오 열람 승인을 받지 않았습니다.");
       setProjects([]);
       setResources([]);
