@@ -12,6 +12,7 @@ import {
   resources as sampleResources,
 } from "./data";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { calculateScheduleProgress } from "./lib/portfolio";
 import type { Project, ProjectStatus, Resource, RiskLevel } from "./types";
 
 interface PortfolioContextValue {
@@ -29,6 +30,7 @@ interface ProjectRow {
   customer_id: string;
   name: string;
   category: string;
+  project_type: string | null;
   probability: number;
   status: ProjectStatus;
   start_date: string | null;
@@ -161,7 +163,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       client
         .from("projects")
         .select(
-          "id,customer_id,name,category,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id",
+          "id,customer_id,name,category,project_type,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id",
         )
         .eq("is_archived", false)
         .order("updated_at", { ascending: false }),
@@ -225,16 +227,25 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         const periods = periodRows.filter(
           (period) => period.project_id === row.id,
         );
+        const customer = customerById.get(row.customer_id) ?? "미지정 고객사";
+        const workPeriods = periods.map((period) => ({ startDate: period.start_date, endDate: period.end_date }));
+        const scheduleProgress = calculateScheduleProgress({
+          startDate: row.start_date,
+          endDate: row.end_date,
+          workPeriods,
+        });
         return {
           id: row.id,
-          customer: customerById.get(row.customer_id) ?? "미지정 고객사",
+          customer,
           name: row.name,
           category: row.category,
+          workMode: row.project_type === "resident" || customer === "삼성증권" ? "resident" as const : "non_resident" as const,
           probability: row.probability,
           status: row.status,
           startDate: row.start_date,
           endDate: row.end_date,
-          progress: row.progress,
+          progress: row.progress === 0 ? scheduleProgress : row.progress,
+          progressEstimated: row.progress === 0 && scheduleProgress > 0,
           manager: row.project_manager_id
             ? (resourceById.get(row.project_manager_id) ?? "미지정")
             : "미지정",
@@ -245,7 +256,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           phase: row.phase ?? "미정",
           updatedAt: row.updated_at.slice(0, 10),
           workMonths: periods.length ? monthsForPeriods(periods) : undefined,
-          workPeriods: periods.map((period) => ({ startDate: period.start_date, endDate: period.end_date })),
+          workPeriods,
           importNote: row.import_note ?? undefined,
         };
       }),

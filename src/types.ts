@@ -1,5 +1,6 @@
 export type ProjectStatus = 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Confirmed' | 'Planning' | 'In Progress' | 'On Hold' | 'At Risk' | 'Completed' | 'Cancelled' | 'Archived'
 export type RiskLevel = 'Low' | 'Medium' | 'High'
+export type WorkMode = 'resident' | 'non_resident'
 
 export interface Project {
   id: string
@@ -11,6 +12,8 @@ export interface Project {
   startDate: string | null
   endDate: string | null
   progress: number
+  progressEstimated?: boolean
+  workMode?: WorkMode
   manager: string
   resources: string[]
   resourceAllocations?: Record<string, number>

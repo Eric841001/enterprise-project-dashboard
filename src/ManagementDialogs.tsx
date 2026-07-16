@@ -3,7 +3,7 @@ import { Download, X } from "lucide-react";
 import { allocationFor } from "./lib/portfolio";
 import { supabase } from "./lib/supabase";
 import { usePortfolio } from "./portfolio-context";
-import type { Project, ProjectStatus, RiskLevel } from "./types";
+import type { Project, ProjectStatus, RiskLevel, WorkMode } from "./types";
 
 const categories = [
   "M365 Consulting", "M365 Deployment", "M365 Education", "Azure Consulting",
@@ -51,6 +51,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
   const [customerId, setCustomerId] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState(categories[0]);
+  const [workMode, setWorkMode] = useState<WorkMode>("non_resident");
   const [status, setStatus] = useState<ProjectStatus>("Lead");
   const [probability, setProbability] = useState(10);
   const [progress, setProgress] = useState(0);
@@ -75,6 +76,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     });
     setName(project?.name ?? "");
     setCategory(project?.category ?? categories[0]);
+    setWorkMode(project?.workMode ?? "non_resident");
     setStatus(project?.status ?? "Lead");
     setProbability(project?.probability ?? 10);
     setProgress(project?.progress ?? 0);
@@ -109,7 +111,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     }
     setBusy(true); setError("");
     const payload = {
-      customer_id: customerId, name: name.trim(), category, status, probability,
+      customer_id: customerId, name: name.trim(), category, project_type: workMode, status, probability,
       progress, risk_level: risk, start_date: startDate || null, end_date: endDate || null,
       scope_summary: scope.trim() || null, phase: phase.trim() || null,
       project_manager_id: managerId || null, updated_at: new Date().toISOString(),
@@ -146,6 +148,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
           <label>고객사<select value={customerId} onChange={(e) => setCustomerId(e.target.value)} required><option value="">선택</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
           <label>프로젝트명<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
           <label>카테고리<select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>수행 형태<select value={workMode} onChange={(e) => setWorkMode(e.target.value as WorkMode)}><option value="non_resident">비상주</option><option value="resident">상주</option></select></label>
           <label>상태<select value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>{statuses.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>수주 확률<input type="number" min="0" max="100" value={probability} onChange={(e) => setProbability(Number(e.target.value))} /></label>
           <label>진행률<input type="number" min="0" max="100" value={progress} onChange={(e) => setProgress(Number(e.target.value))} /></label>

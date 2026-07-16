@@ -27,6 +27,34 @@ export function activeInMonth(project: Project, month: number, year = 2026) {
   return point >= start && point <= end
 }
 
+function monthIndex(date: string) {
+  return Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1
+}
+
+function addMonthRange(months: Set<number>, startDate: string, endDate: string) {
+  const start = monthIndex(startDate)
+  const end = monthIndex(endDate)
+  for (let month = start; month <= end; month += 1) months.add(month)
+}
+
+export function calculateScheduleProgress(
+  project: Pick<Project, 'startDate' | 'endDate' | 'workMonths' | 'workPeriods'>,
+  asOf = new Date(),
+) {
+  const scheduled = new Set<number>()
+  if (project.workPeriods?.length) {
+    project.workPeriods.forEach((period) => addMonthRange(scheduled, period.startDate, period.endDate))
+  } else if (project.workMonths?.length) {
+    project.workMonths.forEach((month) => scheduled.add(2026 * 12 + month - 1))
+  } else if (project.startDate && project.endDate) {
+    addMonthRange(scheduled, project.startDate, project.endDate)
+  }
+  if (!scheduled.size) return 0
+  const current = asOf.getFullYear() * 12 + asOf.getMonth()
+  const elapsed = [...scheduled].filter((month) => month <= current).length
+  return Math.min(100, Math.round((elapsed / scheduled.size) * 100))
+}
+
 export function projectWarnings(project: Project) {
   const warnings: string[] = []
   if (project.status === 'Confirmed' && project.probability < 100) warnings.push('확정 상태지만 확률이 100% 미만입니다.')
@@ -44,7 +72,7 @@ export function allocationFor(resource: string, month: number, rows: Project[], 
 
 export function toCsv(rows: Project[]) {
   const quote = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`
-  const header = ['Customer','Project Name','Category','Probability','Status','Start Date','End Date','Project Manager','Assigned Resources','Scope','Progress','Risk','Notes']
-  const body = rows.map(p => [p.customer,p.name,p.category,p.probability,p.status,p.startDate,p.endDate,p.manager,p.resources.join('; '),p.scope,p.progress,p.risk,p.importNote].map(quote).join(','))
+  const header = ['Customer','Project Name','Category','Work Mode','Probability','Status','Start Date','End Date','Project Manager','Assigned Resources','Scope','Progress','Risk','Notes']
+  const body = rows.map(p => [p.customer,p.name,p.category,p.workMode === 'resident' ? '상주' : '비상주',p.probability,p.status,p.startDate,p.endDate,p.manager,p.resources.join('; '),p.scope,p.progress,p.risk,p.importNote].map(quote).join(','))
   return '\uFEFF' + [header.map(quote).join(','),...body].join('\r\n')
 }

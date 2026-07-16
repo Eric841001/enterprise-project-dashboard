@@ -622,6 +622,7 @@ function useProjectFilter() {
   const [status, setStatus] = useState("all");
   const [category, setCategory] = useState("all");
   const [risk, setRisk] = useState("all");
+  const [workMode, setWorkMode] = useState("all");
   const filtered = useMemo(
     () =>
       projects.filter(
@@ -629,18 +630,19 @@ function useProjectFilter() {
           (status === "all" || p.status === status) &&
           (category === "all" || p.category === category) &&
           (risk === "all" || p.risk === risk) &&
+          (workMode === "all" || (p.workMode ?? "non_resident") === workMode) &&
           `${p.customer} ${p.name} ${p.resources.join(" ")}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
-    [projects, query, status, category, risk],
+    [projects, query, status, category, risk, workMode],
   );
-  return { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, filtered };
+  return { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, workMode, setWorkMode, filtered };
 }
 function Projects() {
   const { canEdit } = usePortfolio();
   const [creating, setCreating] = useState(false);
-  const { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, filtered } = useProjectFilter();
+  const { query, setQuery, status, setStatus, category, setCategory, risk, setRisk, workMode, setWorkMode, filtered } = useProjectFilter();
   function download() {
     const blob = new Blob([toCsv(filtered)], {
       type: "text/csv;charset=utf-8",
@@ -688,7 +690,8 @@ function Projects() {
         </select>
         <select value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">모든 카테고리</option>{Array.from(new Set(projects.map((project) => project.category))).map((item) => <option key={item}>{item}</option>)}</select>
         <select value={risk} onChange={(event) => setRisk(event.target.value)}><option value="all">모든 위험</option><option>Low</option><option>Medium</option><option>High</option></select>
-        {(query || status !== "all" || category !== "all" || risk !== "all") && <button className="secondary" onClick={() => { setQuery(""); setStatus("all"); setCategory("all"); setRisk("all"); }}>필터 초기화</button>}
+        <select value={workMode} onChange={(event) => setWorkMode(event.target.value)}><option value="all">모든 수행 형태</option><option value="resident">상주</option><option value="non_resident">비상주</option></select>
+        {(query || status !== "all" || category !== "all" || risk !== "all" || workMode !== "all") && <button className="secondary" onClick={() => { setQuery(""); setStatus("all"); setCategory("all"); setRisk("all"); setWorkMode("all"); }}>필터 초기화</button>}
         <button className="secondary" onClick={download}>
           <Download /> CSV 내보내기
         </button>
@@ -701,6 +704,7 @@ function Projects() {
               <th>상태</th>
               <th>확률</th>
               <th>기간</th>
+              <th>수행 형태</th>
               <th>진행률</th>
               <th>담당 리소스</th>
               <th>위험</th>
@@ -728,11 +732,12 @@ function Projects() {
                   {p.startDate?.slice(0, 7) ?? "미정"} —{" "}
                   {p.endDate?.slice(0, 7) ?? "미정"}
                 </td>
+                <td><Badge tone={p.workMode === "resident" ? "purple" : "gray"}>{p.workMode === "resident" ? "상주" : "비상주"}</Badge></td>
                 <td>
                   <div className="progress">
                     <i style={{ width: `${p.progress}%` }} />
                   </div>
-                  <small>{p.progress}%</small>
+                  <small title={p.progressEstimated ? "시작 월을 포함한 예정 개월 기준 자동 산정" : "입력된 진행률"}>{p.progress}%{p.progressEstimated ? " · 일정 산정" : ""}</small>
                 </td>
                 <td>
                   <AvatarStack names={p.resources} />
@@ -842,7 +847,7 @@ function ProjectDetail() {
           value={`${p.probability}%`}
           note="수동 조정 가능"
         />
-        <Kpi label="진행률" value={`${p.progress}%`} note="현재 기준" />
+        <Kpi label="진행률" value={`${p.progress}%`} note={p.progressEstimated ? "일정 기준 자동 산정" : "현재 기준"} />
         <Kpi
           label="위험 수준"
           value={p.risk}
@@ -867,6 +872,10 @@ function ProjectDetail() {
               <dd>
                 {p.startDate ?? "미정"} — {p.endDate ?? "미정"}
               </dd>
+            </div>
+            <div>
+              <dt>수행 형태</dt>
+              <dd>{p.workMode === "resident" ? "상주" : "비상주"}</dd>
             </div>
             <div>
               <dt>범위</dt>
