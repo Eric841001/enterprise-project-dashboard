@@ -737,7 +737,7 @@ function Projects() {
                   <div className="progress">
                     <i style={{ width: `${p.progress}%` }} />
                   </div>
-                  <small title={p.progressEstimated ? "시작 월을 포함한 예정 개월 기준 자동 산정" : "입력된 진행률"}>{p.progress}%{p.progressEstimated ? " · 일정 산정" : ""}</small>
+                  <small title={p.progressEstimated ? "시작일부터 오늘까지의 경과일 기준 자동 산정" : "입력된 진행률"}>{p.progress}%{p.progressEstimated ? " · 일정 산정" : ""}</small>
                 </td>
                 <td>
                   <AvatarStack names={p.resources} />
@@ -847,7 +847,7 @@ function ProjectDetail() {
           value={`${p.probability}%`}
           note="수동 조정 가능"
         />
-        <Kpi label="진행률" value={`${p.progress}%`} note={p.progressEstimated ? "일정 기준 자동 산정" : "현재 기준"} />
+        <Kpi label="진행률" value={`${p.progress}%`} note={p.progressEstimated ? "시작일~오늘 자동 산정" : "현재 기준"} />
         <Kpi
           label="위험 수준"
           value={p.risk}

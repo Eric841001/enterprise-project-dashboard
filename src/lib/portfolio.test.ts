@@ -9,7 +9,8 @@ describe('project validation',()=>{
 describe('portfolio calculations',()=>{
   it('preserves discontinuous work periods',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,5)).toBe(false);expect(activeInMonth(p,8)).toBe(true)})
   it('does not carry a one-year schedule into another year',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,8,2027)).toBe(false)})
-  it('calculates inclusive month-based progress for a continuous schedule',()=>{expect(calculateScheduleProgress({startDate:'2026-06-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(29)})
+  it('calculates inclusive day-based progress from the start date through today',()=>{expect(calculateScheduleProgress({startDate:'2026-06-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(21)})
+  it('prorates the current starting month instead of counting the full month',()=>{expect(calculateScheduleProgress({startDate:'2026-07-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(9)})
   it('calculates progress from discontinuous scheduled months',()=>{expect(calculateScheduleProgress({startDate:'2026-04-01',endDate:'2026-10-31',workPeriods:[{startDate:'2026-04-01',endDate:'2026-04-30'},{startDate:'2026-08-01',endDate:'2026-10-31'}]},new Date(2026,6,16))).toBe(25)})
   it('keeps future schedules at zero progress',()=>{expect(calculateScheduleProgress({startDate:'2026-08-01',endDate:'2026-10-31'},new Date(2026,6,16))).toBe(0)})
   it('detects monthly over-allocation',()=>{expect(allocationFor('Engineer B',8,projects)).toBeGreaterThan(100)})

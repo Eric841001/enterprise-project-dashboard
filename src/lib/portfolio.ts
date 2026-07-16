@@ -27,14 +27,15 @@ export function activeInMonth(project: Project, month: number, year = 2026) {
   return point >= start && point <= end
 }
 
-function monthIndex(date: string) {
-  return Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1
+function dayIndex(date: string) {
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number)
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
 }
 
-function addMonthRange(months: Set<number>, startDate: string, endDate: string) {
-  const start = monthIndex(startDate)
-  const end = monthIndex(endDate)
-  for (let month = start; month <= end; month += 1) months.add(month)
+function addDayRange(days: Set<number>, startDate: string, endDate: string) {
+  const start = dayIndex(startDate)
+  const end = dayIndex(endDate)
+  for (let day = start; day <= end; day += 1) days.add(day)
 }
 
 export function calculateScheduleProgress(
@@ -43,15 +44,18 @@ export function calculateScheduleProgress(
 ) {
   const scheduled = new Set<number>()
   if (project.workPeriods?.length) {
-    project.workPeriods.forEach((period) => addMonthRange(scheduled, period.startDate, period.endDate))
+    project.workPeriods.forEach((period) => addDayRange(scheduled, period.startDate, period.endDate))
   } else if (project.workMonths?.length) {
-    project.workMonths.forEach((month) => scheduled.add(2026 * 12 + month - 1))
+    project.workMonths.forEach((month) => {
+      const lastDay = new Date(Date.UTC(2026, month, 0)).getUTCDate()
+      addDayRange(scheduled, `2026-${String(month).padStart(2, '0')}-01`, `2026-${String(month).padStart(2, '0')}-${lastDay}`)
+    })
   } else if (project.startDate && project.endDate) {
-    addMonthRange(scheduled, project.startDate, project.endDate)
+    addDayRange(scheduled, project.startDate, project.endDate)
   }
   if (!scheduled.size) return 0
-  const current = asOf.getFullYear() * 12 + asOf.getMonth()
-  const elapsed = [...scheduled].filter((month) => month <= current).length
+  const current = Math.floor(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()) / 86_400_000)
+  const elapsed = [...scheduled].filter((day) => day <= current).length
   return Math.min(100, Math.round((elapsed / scheduled.size) * 100))
 }
 
