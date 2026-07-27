@@ -61,6 +61,8 @@ import {
 import {
   activeInMonth,
   allocationFor,
+  projectCountForResource,
+  projectHasVisibleOwner,
   projectWarnings,
   toCsv,
 } from "./lib/portfolio";
@@ -88,6 +90,11 @@ const projectStatuses = [
   "Lead", "Qualified", "Proposal", "Negotiation", "Confirmed", "Planning",
   "In Progress", "On Hold", "At Risk", "Completed", "Cancelled", "Archived",
 ] as const;
+
+function projectDisplayPeople(project: Project) {
+  return project.resources.length ? project.resources.join(", ") : project.manager !== "미지정" ? project.manager : "담당자 미지정";
+}
+
 const colors = [
   "#0b69a3",
   "#16a085",
@@ -223,9 +230,9 @@ function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
   const globalMatches = globalQuery.trim()
-    ? portfolio.projects.filter((project) => `${project.customer} ${project.name} ${project.resources.join(" ")}`.toLowerCase().includes(globalQuery.toLowerCase())).slice(0, 6)
+    ? portfolio.projects.filter((project) => `${project.customer} ${project.name} ${project.manager} ${project.resources.join(" ")}`.toLowerCase().includes(globalQuery.toLowerCase())).slice(0, 6)
     : [];
-  const alerts = portfolio.projects.filter((project) => project.risk === "High" || !project.startDate || !project.resources.length);
+  const alerts = portfolio.projects.filter((project) => project.risk === "High" || !project.startDate || !projectHasVisibleOwner(project));
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => localStorage.setItem("portfolio-theme", dark ? "dark" : "light"), [dark]);
   return (
@@ -290,7 +297,7 @@ function Shell() {
               <div className="search-results">
                 {globalMatches.map((project) => (
                   <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setGlobalQuery("")}>
-                    <strong>{project.customer}</strong><span>{project.name} · {project.resources.join(", ") || "담당자 미지정"}</span>
+                    <strong>{project.customer}</strong><span>{project.name} · {projectDisplayPeople(project)}</span>
                   </Link>
                 ))}
               </div>
@@ -423,12 +430,12 @@ function Dashboard() {
     ["Confirmed", "Planning", "In Progress"].includes(p.status),
   );
   const high = projects.filter((p) => p.risk === "High");
-  const assigned = new Set(projects.flatMap((p) => p.resources)).size;
+  const assigned = new Set(projects.flatMap((p) => [...p.resources, ...(p.manager !== "미지정" ? [p.manager] : [])])).size;
   const now = new Date();
   const dashboardYear = now.getFullYear();
   const dashboardMonth = now.getMonth() + 1;
   const overallocated = resources.filter((resource) => allocationFor(resource.name, dashboardMonth, projects, dashboardYear) > 100);
-  const unassigned = projects.filter((project) => !project.resources.length);
+  const unassigned = projects.filter((project) => !projectHasVisibleOwner(project));
   const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
   const statusData = Object.entries(
     projects.reduce<Record<string, number>>(
@@ -631,7 +638,7 @@ function useProjectFilter() {
           (category === "all" || p.category === category) &&
           (risk === "all" || p.risk === risk) &&
           (workMode === "all" || (p.workMode ?? "non_resident") === workMode) &&
-          `${p.customer} ${p.name} ${p.resources.join(" ")}`
+          `${p.customer} ${p.name} ${p.manager} ${p.resources.join(" ")}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
@@ -943,7 +950,7 @@ function Schedule() {
       (prob === "all" || p.probability === Number(prob)) &&
       (scheduleStatus === "all" || p.status === scheduleStatus) &&
       (scheduleCategory === "all" || p.category === scheduleCategory) &&
-      `${p.customer} ${p.name} ${p.resources.join(" ")}`.toLowerCase().includes(scheduleQuery.toLowerCase()),
+      `${p.customer} ${p.name} ${p.manager} ${p.resources.join(" ")}`.toLowerCase().includes(scheduleQuery.toLowerCase()),
   );
   return (
     <>
@@ -1093,11 +1100,7 @@ function Resources() {
                   프로젝트{" "}
                   <strong>
                     {
-                      projects.filter(
-                        (p) =>
-                          p.resources.includes(r.name) &&
-                          activeInMonth(p, month, resourceYear),
-                      ).length
+                      projectCountForResource(r.name, month, projects, resourceYear)
                     }
                   </strong>
                 </span>
