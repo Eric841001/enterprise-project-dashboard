@@ -20,8 +20,16 @@ export function activeInMonth(project: Project, month: number, year = 2026) {
     })
   }
   if (project.workMonths) return year === 2026 && project.workMonths.includes(month)
-  if (!project.startDate || !project.endDate) return false
   const point = year * 12 + month
+  if (!project.startDate && !project.endDate) return false
+  if (!project.startDate) {
+    const end = Number(project.endDate!.slice(0,4)) * 12 + Number(project.endDate!.slice(5,7))
+    return point <= end
+  }
+  if (!project.endDate) {
+    const start = Number(project.startDate.slice(0,4)) * 12 + Number(project.startDate.slice(5,7))
+    return point >= start
+  }
   const start = Number(project.startDate.slice(0,4)) * 12 + Number(project.startDate.slice(5,7))
   const end = Number(project.endDate.slice(0,4)) * 12 + Number(project.endDate.slice(5,7))
   return point >= start && point <= end
@@ -68,6 +76,30 @@ export function projectWarnings(project: Project) {
   return warnings
 }
 
+export function projectInvolvesResource(resource: string, project: Project) {
+  return project.manager === resource || project.resources.includes(resource)
+}
+
+export function projectHasVisibleOwner(project: Project) {
+  return project.manager !== '미지정' || project.resources.length > 0
+}
+
+function assignmentActiveInMonth(assignment: { startDate: string; endDate: string }, month: number, year = 2026) {
+  const point = year * 12 + month
+  const start = Number(assignment.startDate.slice(0,4)) * 12 + Number(assignment.startDate.slice(5,7))
+  const end = Number(assignment.endDate.slice(0,4)) * 12 + Number(assignment.endDate.slice(5,7))
+  return point >= start && point <= end
+}
+
+export function resourceActiveInMonth(resource: string, project: Project, month: number, year = 2026) {
+  const assignments = project.resourceAssignments?.[resource]
+  if (assignments?.length) return assignments.some(assignment => assignmentActiveInMonth(assignment, month, year))
+  return projectInvolvesResource(resource, project) && activeInMonth(project, month, year)
+}
+
+export function projectCountForResource(resource: string, month: number, rows: Project[], year = 2026) {
+  return rows.filter(project => resourceActiveInMonth(resource, project, month, year)).length
+}
 export function allocationFor(resource: string, month: number, rows: Project[], year = 2026) {
   return rows
     .filter(p => p.resources.includes(resource))

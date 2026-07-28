@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest'
 import { projects } from '../data'
-import { activeInMonth, allocationFor, calculateScheduleProgress, projectWarnings, toCsv, validateProject } from './portfolio'
+import { activeInMonth, allocationFor, calculateScheduleProgress, projectCountForResource, projectInvolvesResource, resourceActiveInMonth, projectWarnings, toCsv, validateProject } from './portfolio'
 
 describe('project validation',()=>{
   it('validates required fields, ranges, and dates',()=>{expect(validateProject({customer:'',name:'',probability:101,progress:-1,startDate:'2026-10-01',endDate:'2026-09-01'})).toHaveLength(5)})
@@ -9,6 +9,9 @@ describe('project validation',()=>{
 describe('portfolio calculations',()=>{
   it('preserves discontinuous work periods',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,5)).toBe(false);expect(activeInMonth(p,8)).toBe(true)})
   it('does not carry a one-year schedule into another year',()=>{const p=projects.find(x=>x.id==='sample-mirae-migration')!;expect(activeInMonth(p,8,2027)).toBe(false)})
+  it('treats open-ended started projects as active from their start month',()=>{const p={...projects[0],startDate:'2026-07-15',endDate:null};expect(activeInMonth(p,6,2026)).toBe(false);expect(activeInMonth(p,7,2026)).toBe(true);expect(activeInMonth(p,8,2026)).toBe(true)})
+  it('counts project managers in resource project totals without adding allocation',()=>{const p={...projects[0],manager:'Manager A',resources:[],startDate:'2026-07-15',endDate:null};expect(projectInvolvesResource('Manager A',p)).toBe(true);expect(projectCountForResource('Manager A',7,[p],2026)).toBe(1);expect(allocationFor('Manager A',7,[p],2026)).toBe(0)})
+  it('counts assigned projects by the resource assignment period',()=>{const p={...projects[0],startDate:'2026-08-01',endDate:'2026-08-31',resources:['Manager A'],resourceAllocations:{'Manager A':50},resourceAssignments:{'Manager A':[{allocation:50,startDate:'2026-07-01',endDate:'2026-07-31'}]}};expect(resourceActiveInMonth('Manager A',p,7,2026)).toBe(true);expect(projectCountForResource('Manager A',7,[p],2026)).toBe(1);expect(projectCountForResource('Manager A',8,[p],2026)).toBe(0)})
   it('calculates inclusive day-based progress from the start date through today',()=>{expect(calculateScheduleProgress({startDate:'2026-06-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(21)})
   it('prorates the current starting month instead of counting the full month',()=>{expect(calculateScheduleProgress({startDate:'2026-07-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(9)})
   it('calculates progress from discontinuous scheduled months',()=>{expect(calculateScheduleProgress({startDate:'2026-04-01',endDate:'2026-10-31',workPeriods:[{startDate:'2026-04-01',endDate:'2026-04-30'},{startDate:'2026-08-01',endDate:'2026-10-31'}]},new Date(2026,6,16))).toBe(25)})
