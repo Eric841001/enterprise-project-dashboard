@@ -41,6 +41,11 @@ interface ProjectRow {
   phase: string | null;
   updated_at: string;
   import_note: string | null;
+  follow_up_status: Project["followUpStatus"] | null;
+  next_action: string | null;
+  next_action_due_date: string | null;
+  evidence_last_at: string | null;
+  evidence_summary: string | null;
   project_manager_id: string | null;
 }
 interface CustomerRow {
@@ -165,7 +170,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       client
         .from("projects")
         .select(
-          "id,customer_id,name,category,project_type,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id",
+          "id,customer_id,name,category,project_type,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id,follow_up_status,next_action,next_action_due_date,evidence_last_at,evidence_summary",
         )
         .eq("is_archived", false)
         .order("updated_at", { ascending: false }),
@@ -273,6 +278,11 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           workMonths: periods.length ? monthsForPeriods(periods) : undefined,
           workPeriods,
           importNote: row.import_note ?? undefined,
+          followUpStatus: row.follow_up_status ?? undefined,
+          nextAction: row.next_action ?? undefined,
+          nextActionDueDate: row.next_action_due_date,
+          evidenceLastAt: row.evidence_last_at,
+          evidenceSummary: row.evidence_summary ?? undefined,
         };
       }),
     );

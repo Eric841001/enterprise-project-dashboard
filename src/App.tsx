@@ -104,22 +104,59 @@ const colors = [
   "#5b6b7b",
 ];
 
+function appRedirectUrl() {
+  return new URL(import.meta.env.BASE_URL, window.location.origin).toString();
+}
+
+function authErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message === "Failed to fetch") {
+    return "인증 서버에 연결하지 못했습니다. Supabase URL/anon key, 네트워크, 브라우저 차단 설정을 확인하세요.";
+  }
+  if (error instanceof Error) return error.message;
+  return "인증 요청 중 알 수 없는 오류가 발생했습니다.";
+}
+
 function AuthGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(!isSupabaseConfigured);
   const [signedIn, setSignedIn] = useState(!isSupabaseConfigured);
+  const [recovering, setRecovering] = useState(false);
   useEffect(() => {
     const client = supabase;
     if (!client) return;
-    void client.auth.getSession().then(({ data }) => {
-      setSignedIn(Boolean(data.session));
+    let active = true;
+    const fallback = window.setTimeout(() => {
+      if (!active) return;
+      setSignedIn(false);
+      setReady(true);
+    }, 5000);
+    void client.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        setSignedIn(Boolean(data.session));
+      })
+      .catch(() => {
+        if (!active) return;
+        setSignedIn(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        window.clearTimeout(fallback);
+        setReady(true);
+      });
+    const { data } = client.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") setRecovering(true);
+      setSignedIn(Boolean(session));
       setReady(true);
     });
-    const { data } = client.auth.onAuthStateChange((_event, session) =>
-      setSignedIn(Boolean(session)),
-    );
-    return () => data.subscription.unsubscribe();
+    return () => {
+      active = false;
+      window.clearTimeout(fallback);
+      data.subscription.unsubscribe();
+    };
   }, []);
   if (!ready) return <div className="center-state">세션 확인 중…</div>;
+  if (recovering) return <ResetPassword onDone={() => setRecovering(false)} />;
   if (!signedIn) return <Login />;
   return <>{children}</>;
 }
@@ -136,22 +173,41 @@ function Login() {
     setBusy(true);
     setError("");
     setNotice("");
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setError(authError?.message ?? "");
-    setBusy(false);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      setError(authError?.message ?? "");
+    } catch (authError) {
+      setError(authErrorMessage(authError));
+    } finally {
+      setBusy(false);
+    }
   }
   async function resetPassword() {
     if (!supabase || !email) return;
     setBusy(true);
     setError("");
-    setNotice("");
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
-    if (resetError) setError(resetError.message);
-    else setNotice("비밀번호 재설정 안내 메일을 보냈습니다.");
-    setBusy(false);
+    setNotice("비밀번호 재설정 메일을 요청하는 중입니다.");
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: appRedirectUrl(),
+      });
+      if (resetError) {
+        setNotice("");
+        setError(resetError.message);
+      } else {
+        setNotice(
+          "요청을 보냈습니다. 메일이 오지 않으면 등록된 계정인지, 스팸함, Supabase Auth 이메일/Redirect URL 설정을 확인하세요.",
+        );
+      }
+    } catch (resetError) {
+      setNotice("");
+      setError(authErrorMessage(resetError));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <main className="login-shell">
@@ -198,11 +254,85 @@ function Login() {
         </button>
         <button
           type="button"
-          className="text-button"
+          className="secondary wide"
           onClick={() => void resetPassword()}
           disabled={!email || busy}
         >
-          비밀번호 재설정
+          {busy ? "요청 중…" : "비밀번호 재설정 메일 보내기"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function ResetPassword({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    setError("");
+    setNotice("");
+    if (password.length < 8) {
+      setError("비밀번호는 8자 이상으로 설정하세요.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("비밀번호가 서로 일치하지 않습니다.");
+      return;
+    }
+    setBusy(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) setError(updateError.message);
+    else {
+      setNotice("비밀번호를 변경했습니다. 새 비밀번호로 로그인할 수 있습니다.");
+      window.setTimeout(onDone, 1200);
+    }
+    setBusy(false);
+  }
+  return (
+    <main className="login-shell">
+      <section className="login-brand">
+        <div className="brand-mark">P</div>
+        <p className="eyebrow">PROJECT OPERATIONS</p>
+        <h1>
+          새 비밀번호를
+          <br />
+          설정하세요.
+        </h1>
+        <p>재설정 메일로 인증된 세션에서만 비밀번호를 변경할 수 있습니다.</p>
+      </section>
+      <form className="login-card" onSubmit={submit}>
+        <p className="eyebrow">PASSWORD RESET</p>
+        <h2>비밀번호 재설정</h2>
+        <p className="muted">8자 이상의 새 비밀번호를 입력합니다.</p>
+        <label>
+          새 비밀번호
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          새 비밀번호 확인
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+        </label>
+        <div aria-live="polite">
+          {error && <p className="form-error">{error}</p>}
+          {notice && <p className="form-success">{notice}</p>}
+        </div>
+        <button className="primary wide" disabled={busy}>
+          {busy ? "변경 중…" : "비밀번호 변경"}
         </button>
       </form>
     </main>
@@ -437,6 +567,7 @@ function Dashboard() {
   const overallocated = resources.filter((resource) => allocationFor(resource.name, dashboardMonth, projects, dashboardYear) > 100);
   const unassigned = projects.filter((project) => !projectHasVisibleOwner(project));
   const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
+  const followUps = projects.filter((project) => project.followUpStatus === "Pending" || project.followUpStatus === "Waiting");
   const statusData = Object.entries(
     projects.reduce<Record<string, number>>(
       (a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a),
@@ -537,6 +668,12 @@ function Dashboard() {
             tone="red"
             title={`고위험 프로젝트 ${high.length}건`}
             text={high.map((project) => project.customer).join(", ") || "해당 없음"}
+          />
+          <Attention
+            icon={<CircleHelp />}
+            tone="amber"
+            title={`후속조치 필요 ${followUps.length}건`}
+            text={followUps.map((project) => project.customer).join(", ") || "해당 없음"}
           />
           <Attention
             icon={<Users />}
@@ -715,6 +852,7 @@ function Projects() {
               <th>진행률</th>
               <th>담당 리소스</th>
               <th>위험</th>
+              <th>후속조치</th>
               <th></th>
             </tr>
           </thead>
@@ -751,6 +889,12 @@ function Projects() {
                 </td>
                 <td>
                   <Badge tone={riskTone(p.risk)}>{p.risk}</Badge>
+                </td>
+                <td>
+                  <Badge tone={p.followUpStatus === "Pending" ? "amber" : p.followUpStatus === "Waiting" ? "blue" : "gray"}>
+                    {p.followUpStatus === "Pending" ? "조치 필요" : p.followUpStatus === "Waiting" ? "회신 대기" : p.followUpStatus === "Done" ? "완료" : "해당 없음"}
+                  </Badge>
+                  {p.nextActionDueDate && <small className="follow-up-due">{p.nextActionDueDate}</small>}
                 </td>
                 <td>
                   <Link to={`/projects/${p.id}`} className="icon">
@@ -863,6 +1007,18 @@ function ProjectDetail() {
         />
       </section>
       <section className="detail-grid">
+        {(p.followUpStatus || p.nextAction || p.evidenceSummary) && (
+          <article className="panel prose span-2">
+            <h2>메일 추적 및 후속조치</h2>
+            <dl>
+              <div><dt>상태</dt><dd>{p.followUpStatus === "Pending" ? "조치 필요" : p.followUpStatus === "Waiting" ? "회신 대기" : p.followUpStatus === "Done" ? "완료" : "해당 없음"}</dd></div>
+              <div><dt>다음 액션</dt><dd>{p.nextAction ?? "등록된 후속조치 없음"}</dd></div>
+              <div><dt>조치 기한</dt><dd>{p.nextActionDueDate ?? "미정"}</dd></div>
+              <div><dt>최근 메일 근거</dt><dd>{p.evidenceLastAt ? new Date(p.evidenceLastAt).toLocaleString("ko-KR") : "미확인"}</dd></div>
+              <div><dt>확인된 내용</dt><dd>{p.evidenceSummary ?? "메일 근거 없음"}</dd></div>
+            </dl>
+          </article>
+        )}
         <article className="panel prose">
           <h2>프로젝트 개요</h2>
           <dl>

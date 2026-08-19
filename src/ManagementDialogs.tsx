@@ -3,7 +3,7 @@ import { Download, X } from "lucide-react";
 import { allocationFor } from "./lib/portfolio";
 import { supabase } from "./lib/supabase";
 import { usePortfolio } from "./portfolio-context";
-import type { Project, ProjectStatus, RiskLevel, WorkMode } from "./types";
+import type { FollowUpStatus, Project, ProjectStatus, RiskLevel, WorkMode } from "./types";
 
 const categories = [
   "M365 Consulting", "M365 Deployment", "M365 Education", "Azure Consulting",
@@ -60,6 +60,10 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
   const [endDate, setEndDate] = useState("");
   const [scope, setScope] = useState("");
   const [phase, setPhase] = useState("Planning");
+  const [followUpStatus, setFollowUpStatus] = useState<FollowUpStatus>("Not Required");
+  const [nextAction, setNextAction] = useState("");
+  const [nextActionDueDate, setNextActionDueDate] = useState("");
+  const [evidenceSummary, setEvidenceSummary] = useState("");
   const [managerId, setManagerId] = useState("");
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
@@ -86,6 +90,10 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     setEndDate(project?.endDate ?? "");
     setScope(project?.scope === "범위 미정" ? "" : (project?.scope ?? ""));
     setPhase(project?.phase ?? "Planning");
+    setFollowUpStatus(project?.followUpStatus ?? "Not Required");
+    setNextAction(project?.nextAction ?? "");
+    setNextActionDueDate(project?.nextActionDueDate ?? "");
+    setEvidenceSummary(project?.evidenceSummary ?? "");
     setManagerId(resources.find((resource) => resource.name === project?.manager)?.id ?? "");
     setSelectedResourceIds(resources.filter((resource) => project?.resources.includes(resource.name)).map((resource) => resource.id));
     setAllocations(Object.fromEntries(resources.map((resource) => [resource.id, project?.resourceAllocations?.[resource.name] ?? 50])));
@@ -132,6 +140,9 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
       customer_id: customerId, name: name.trim(), category, project_type: workMode, status, probability,
       progress, risk_level: risk, start_date: startDate || null, end_date: endDate || null,
       scope_summary: scope.trim() || null, phase: phase.trim() || null,
+      follow_up_status: followUpStatus, next_action: nextAction.trim() || null,
+      next_action_due_date: nextActionDueDate || null,
+      evidence_summary: evidenceSummary.trim() || null,
       project_manager_id: managerId || null, updated_at: new Date().toISOString(),
     };
     let projectId = project?.id ?? "";
@@ -178,6 +189,10 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
           <label>종료일<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
           <label>프로젝트 매니저<select value={managerId} onChange={(e) => setManagerId(e.target.value)}><option value="">미지정</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
           <label className="span-2">프로젝트 범위<textarea value={scope} onChange={(e) => setScope(e.target.value)} rows={3} /></label>
+          <label>후속조치 상태<select value={followUpStatus} onChange={(e) => setFollowUpStatus(e.target.value as FollowUpStatus)}><option value="Not Required">해당 없음</option><option value="Pending">조치 필요</option><option value="Waiting">회신 대기</option><option value="Done">완료</option></select></label>
+          <label>후속조치 기한<input type="date" value={nextActionDueDate} onChange={(e) => setNextActionDueDate(e.target.value)} /></label>
+          <label className="span-2">다음 액션<textarea value={nextAction} onChange={(e) => setNextAction(e.target.value)} rows={2} /></label>
+          <label className="span-2">메일·일정 확인 근거<textarea value={evidenceSummary} onChange={(e) => setEvidenceSummary(e.target.value)} rows={3} /></label>
         </div>
         <fieldset className="resource-picker"><legend>담당 리소스·배정률·배정기간</legend>{resources.map((resource) => {
           const selected = selectedResourceIds.includes(resource.id);
