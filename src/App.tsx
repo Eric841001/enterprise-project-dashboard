@@ -178,7 +178,7 @@ function Login() {
         email,
         password,
       });
-      setError(authError?.message ?? "");
+      setError(authError ? authErrorMessage(authError) : "");
     } catch (authError) {
       setError(authErrorMessage(authError));
     } finally {
@@ -187,23 +187,24 @@ function Login() {
   }
   async function resetPassword() {
     if (!supabase || !email) return;
+    const requestedAt = new Date().toLocaleTimeString("ko-KR");
     setBusy(true);
     setError("");
-    setNotice("비밀번호 재설정 메일을 요청하는 중입니다.");
+    setNotice(`${requestedAt} 비밀번호 재설정 메일을 요청하는 중입니다.`);
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: appRedirectUrl(),
       });
       if (resetError) {
-        setNotice("");
-        setError(resetError.message);
+        setNotice(`${requestedAt} 요청이 인증 서버에서 실패했습니다.`);
+        setError(authErrorMessage(resetError));
       } else {
         setNotice(
-          "요청을 보냈습니다. 메일이 오지 않으면 등록된 계정인지, 스팸함, Supabase Auth 이메일/Redirect URL 설정을 확인하세요.",
+          `${requestedAt} 요청을 보냈습니다. 메일이 오지 않으면 등록된 계정인지, 스팸함, Supabase Auth 이메일/Redirect URL 설정을 확인하세요.`,
         );
       }
     } catch (resetError) {
-      setNotice("");
+      setNotice(`${requestedAt} 요청이 브라우저에서 실패했습니다.`);
       setError(authErrorMessage(resetError));
     } finally {
       setBusy(false);
