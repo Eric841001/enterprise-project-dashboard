@@ -9,11 +9,13 @@ import {
 } from "react";
 import {
   projects as sampleProjects,
-  resources as sampleResources,
+  resources as allSampleResources,
 } from "./data";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { calculateScheduleProgress } from "./lib/portfolio";
 import type { Project, ProjectStatus, Resource, RiskLevel } from "./types";
+
+const sampleResources = allSampleResources.filter((resource) => resource.name !== "정석원");
 
 interface PortfolioContextValue {
   projects: Project[];
@@ -203,12 +205,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
     const projectRows = (projectResult.data ?? []) as ProjectRow[];
     const customerRows = (customerResult.data ?? []) as CustomerRow[];
-    const resourceRows = (resourceResult.data ?? []) as ResourceRow[];
+    const allResourceRows = (resourceResult.data ?? []) as ResourceRow[];
+    const resourceRows = allResourceRows.filter((row) => row.name !== "정석원");
     const assignmentRows = (assignmentResult.data ?? []) as AssignmentRow[];
     const periodRows = (periodResult.data ?? []) as WorkPeriodRow[];
     const customerById = new Map(customerRows.map((row) => [row.id, row.name]));
     setCustomers(customerRows);
     const resourceById = new Map(resourceRows.map((row) => [row.id, row.name]));
+    const managerById = new Map(allResourceRows.map((row) => [row.id, row.name]));
 
     setResources(
       resourceRows.map((row) => ({
@@ -266,7 +270,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           progress: row.progress === 0 ? scheduleProgress : row.progress,
           progressEstimated: row.progress === 0 && scheduleProgress > 0,
           manager: row.project_manager_id
-            ? (resourceById.get(row.project_manager_id) ?? "미지정")
+            ? (managerById.get(row.project_manager_id) ?? "미지정")
             : "미지정",
           resources: assigned,
           resourceAllocations,
