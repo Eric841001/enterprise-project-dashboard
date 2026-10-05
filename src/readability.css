@@ -56,6 +56,15 @@ td { padding: 15px; }
 .setting-metrics strong { color: inherit; font-size: 20px; }
 
 .allocation-input { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+.resource-projects { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.resource-projects h3 { margin: 0 0 8px; font-size: 12px; }
+.resource-project { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; overflow-wrap: anywhere; font-size: 12px; }
+.resource-project + .resource-project { border-top: 1px solid var(--line); }
+.resource-project span { color: var(--muted); line-height: 1.5; }
+.resource-project time { color: var(--muted); font-size: 11px; }
+.resource-project:hover strong { text-decoration: underline; }
+.resource-head > div:nth-child(2) { min-width: 0; }
+.resource-head p { overflow-wrap: anywhere; }
 
 @media (max-width: 760px) {
   .page-title h1 { font-size: 29px; }

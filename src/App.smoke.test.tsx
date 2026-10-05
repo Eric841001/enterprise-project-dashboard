@@ -2,12 +2,17 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
+import { projects, resources } from "./data";
 
 vi.mock("./lib/supabase", () => ({ isSupabaseConfigured: false, supabase: null }));
 
 afterEach(cleanup);
 
 describe("all primary menu routes", () => {
+  it("keeps fictitious records out of application data", () => {
+    expect(projects.some((project) => project.id.startsWith("sample-"))).toBe(false);
+    expect(resources.some((resource) => /Consultant|Engineer|Specialist/.test(resource.name))).toBe(false);
+  });
   it.each([
     ["/", "프로젝트 포트폴리오"],
     ["/projects", "프로젝트"],
@@ -22,8 +27,8 @@ describe("all primary menu routes", () => {
   });
 
   it("opens a project detail route", () => {
-    render(<MemoryRouter initialEntries={["/projects/sample-hanseong-governance"]}><App /></MemoryRouter>);
-    expect(screen.getByRole("heading", { name: "Microsoft 365 Governance Rollout", level: 1 })).toBeInTheDocument();
+    render(<MemoryRouter initialEntries={[`/projects/${projects[0].id}`]}><App /></MemoryRouter>);
+    expect(screen.getByRole("heading", { name: projects[0].name, level: 1 })).toBeInTheDocument();
   });
 
   it("exposes every primary navigation link", () => {

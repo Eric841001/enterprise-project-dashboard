@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest'
-import { projects } from '../data'
+import { projects } from './portfolio-fixture.test-data'
 import { activeInMonth, allocationFor, calculateScheduleProgress, projectCountForResource, projectInvolvesResource, resourceActiveInMonth, projectWarnings, toCsv, validateProject } from './portfolio'
 
 describe('project validation',()=>{

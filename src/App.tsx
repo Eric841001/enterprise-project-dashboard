@@ -61,8 +61,8 @@ import {
 import {
   activeInMonth,
   allocationFor,
-  projectCountForResource,
   projectHasVisibleOwner,
+  resourceActiveInMonth,
   projectWarnings,
   toCsv,
 } from "./lib/portfolio";
@@ -1228,6 +1228,15 @@ function Resources() {
       <section className="resource-grid">
         {visibleResources.map((r) => {
           const alloc = allocationFor(r.name, month, projects, resourceYear);
+          const teachingOnly = r.name === "진미나";
+          const monthKey = `${resourceYear}-${String(month).padStart(2, "0")}`;
+          const assignedProjects = projects.filter((project) =>
+            !["Completed", "Cancelled", "Archived"].includes(project.status) &&
+            resourceActiveInMonth(r.name, project, month, resourceYear) &&
+            (!teachingOnly || project.resourceAssignments?.[r.name]?.some((assignment) =>
+              assignment.startDate === assignment.endDate && assignment.startDate.startsWith(monthKey),
+            ) || (project.startDate !== null && project.startDate === project.endDate && project.startDate.startsWith(monthKey))),
+          );
           return (
             <article className="panel resource-card" key={r.id}>
               <div className="resource-head">
@@ -1237,30 +1246,43 @@ function Resources() {
                   <p>{r.role}</p>
                 </div>
                 <Badge
-                  tone={alloc > 100 ? "red" : alloc >= 80 ? "amber" : "teal"}
+                  tone={teachingOnly ? "blue" : alloc > 100 ? "red" : alloc >= 80 ? "amber" : "teal"}
                 >
-                  {alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
+                  {teachingOnly ? "강의" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
                 </Badge>
               </div>
-              <div className="capacity">
+              {!teachingOnly && <><div className="capacity">
                 <span>월간 할당</span>
                 <strong>{alloc}%</strong>
               </div>
               <div className="progress">
                 <i style={{ width: `${Math.min(alloc, 100)}%` }} />
-              </div>
+              </div></>}
               <div className="resource-meta">
                 <span>
                   주요 기술 <strong>{r.skill}</strong>
                 </span>
                 <span>
-                  프로젝트{" "}
+                  {teachingOnly ? "강의 프로젝트" : "프로젝트"}{" "}
                   <strong>
                     {
-                      projectCountForResource(r.name, month, projects, resourceYear)
+                      assignedProjects.length
                     }
                   </strong>
                 </span>
+              </div>
+              <div className="resource-projects">
+                <h3>{teachingOnly ? "강의 일정" : "현재 배정"}</h3>
+                {assignedProjects.length === 0 && <p className="muted">{teachingOnly ? "등록된 강의 일정 없음" : "배정된 프로젝트 없음"}</p>}
+                {assignedProjects.map((project) => {
+                  const dates = (project.resourceAssignments?.[r.name] ?? [])
+                    .filter((assignment) => assignment.startDate === assignment.endDate && assignment.startDate.startsWith(monthKey));
+                  return <Link key={project.id} to={`/projects/${project.id}`} className="resource-project">
+                    <strong>{project.customer}</strong>
+                    <span>{project.name}</span>
+                    {teachingOnly && (dates.length ? dates.map((date, index) => <time key={index} dateTime={date.startDate}>{date.startDate}{date.endDate !== date.startDate ? ` ~ ${date.endDate}` : ""}</time>) : <time>{project.startDate === project.endDate ? project.startDate : "강의일 확인 필요"}</time>)}
+                  </Link>;
+                })}
               </div>
             </article>
           );
