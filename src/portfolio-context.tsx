@@ -8,14 +8,15 @@ import {
   type ReactNode,
 } from "react";
 import {
-  projects as sampleProjects,
+  projects as allSampleProjects,
   resources as allSampleResources,
 } from "./data";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { calculateScheduleProgress } from "./lib/portfolio";
 import type { Project, ProjectStatus, Resource, RiskLevel } from "./types";
 
-const sampleResources = allSampleResources.filter((resource) => resource.name !== "정석원");
+const sampleProjects = import.meta.env.MODE === "test" ? allSampleProjects : [];
+const sampleResources = import.meta.env.MODE === "test" ? allSampleResources.filter((resource) => resource.name !== "정석원") : [];
 
 interface PortfolioContextValue {
   projects: Project[];
@@ -111,6 +112,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const client = supabase;
     if (!client) {
+      setError(import.meta.env.MODE === "test" ? "" : "실시간 데이터 연결이 없어 배정 정보를 표시하지 않습니다.");
       setProjects(sampleProjects);
       setResources(sampleResources);
       setCustomers(Array.from(new Set(sampleProjects.map((project) => project.customer))).map((name) => ({ id: name, name })));

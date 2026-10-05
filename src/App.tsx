@@ -1190,7 +1190,7 @@ function Schedule() {
 }
 
 function Resources() {
-  const { canEdit } = usePortfolio();
+  const { canEdit, error } = usePortfolio();
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [resourceYear, setResourceYear] = useState(new Date().getFullYear());
   const [creating, setCreating] = useState(false);
@@ -1211,6 +1211,7 @@ function Resources() {
         action={<button className="primary" disabled={!canEdit} onClick={() => setCreating(true)} title={!canEdit ? "Admin 또는 Manager만 등록할 수 있습니다." : ""}><Plus /> 리소스 등록</button>}
       />
       <ResourceFormDialog open={creating} onClose={() => setCreating(false)} />
+      {error && <div className="warning" role="alert"><AlertTriangle /><span>{error} <a href="https://eric841001.github.io/enterprise-project-dashboard/resources">운영 리소스 확인</a></span></div>}
       <div className="toolbar">
         <label className="search-box"><Search /><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="이름·역할·기술 검색" /></label>
         <select value={resourceYear} onChange={(event) => setResourceYear(Number(event.target.value))}>{resourceYears.map((item) => <option key={item}>{item}</option>)}</select>
@@ -1229,6 +1230,11 @@ function Resources() {
         {visibleResources.map((r) => {
           const alloc = allocationFor(r.name, month, projects, resourceYear);
           const teachingOnly = r.name === "진미나";
+          const allocationUnknown = projects.some((project) =>
+            resourceActiveInMonth(r.name, project, month, resourceYear) &&
+            project.resources.includes(r.name) &&
+            (project.resourceAssignments?.[r.name]?.some((assignment) => assignment.allocation === 0) || project.resourceAllocations?.[r.name] === 0),
+          );
           const monthKey = `${resourceYear}-${String(month).padStart(2, "0")}`;
           const assignedProjects = projects.filter((project) =>
             !["Completed", "Cancelled", "Archived"].includes(project.status) &&
@@ -1248,12 +1254,12 @@ function Resources() {
                 <Badge
                   tone={teachingOnly ? "blue" : alloc > 100 ? "red" : alloc >= 80 ? "amber" : "teal"}
                 >
-                  {teachingOnly ? "강의" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
+                  {teachingOnly ? "강의" : allocationUnknown ? "투입률 미확정" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
                 </Badge>
               </div>
               {!teachingOnly && <><div className="capacity">
                 <span>월간 할당</span>
-                <strong>{alloc}%</strong>
+                <strong>{allocationUnknown ? "미확정" : `${alloc}%`}</strong>
               </div>
               <div className="progress">
                 <i style={{ width: `${Math.min(alloc, 100)}%` }} />

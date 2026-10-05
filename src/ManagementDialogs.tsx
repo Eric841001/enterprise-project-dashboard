@@ -125,8 +125,8 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     if (!customerId || !name.trim()) { setError("고객사와 프로젝트명은 필수입니다."); return; }
     if (!Number.isFinite(probability) || probability < 0 || probability > 100) { setError("수주 확률은 0~100 사이여야 합니다."); return; }
     if (!Number.isFinite(progress) || progress < 0 || progress > 100) { setError("진행률은 0~100 사이여야 합니다."); return; }
-    if (selectedResourceIds.some((id) => !Number.isFinite(allocations[id]) || allocations[id] < 1 || allocations[id] > 100)) {
-      setError("담당 리소스 배정률은 1~100 사이여야 합니다."); return;
+    if (selectedResourceIds.some((id) => !Number.isFinite(allocations[id]) || allocations[id] < 0 || allocations[id] > 100)) {
+      setError("담당 리소스 배정률은 0~100 사이여야 합니다."); return;
     }
     if (selectedResourceIds.some((id) => !assignmentDates[id]?.startDate || !assignmentDates[id]?.endDate || assignmentDates[id].startDate > assignmentDates[id].endDate)) {
       setError("담당 리소스별 올바른 배정 시작일과 종료일을 입력해 주세요."); return;
@@ -199,7 +199,7 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
           return <div className={`resource-assignment-card ${selected ? "selected" : ""}`} key={resource.id}>
             <label className="resource-toggle"><input type="checkbox" checked={selected} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small></label>
             {selected && <div className="assignment-fields">
-              <label>배정률<input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="1" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} /></label>
+              <label>배정률<input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="0" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} /></label>
               <label>배정 시작일<input aria-label={`${resource.name} 배정 시작일`} type="date" value={assignmentDates[resource.id]?.startDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], startDate: event.target.value } }))} /></label>
               <label>배정 종료일<input aria-label={`${resource.name} 배정 종료일`} type="date" value={assignmentDates[resource.id]?.endDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], endDate: event.target.value } }))} /></label>
             </div>}
