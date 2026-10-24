@@ -61,6 +61,7 @@ import {
 import {
   activeInMonth,
   allocationFor,
+  hasUnconfirmedAllocation,
   projectHasVisibleOwner,
   resourceActiveInMonth,
   projectWarnings,
@@ -1230,12 +1231,15 @@ function Resources() {
         {visibleResources.map((r) => {
           const alloc = allocationFor(r.name, month, projects, resourceYear);
           const teachingOnly = r.name === "진미나";
-          const allocationUnknown = projects.some((project) =>
-            resourceActiveInMonth(r.name, project, month, resourceYear) &&
-            project.resources.includes(r.name) &&
-            (project.resourceAssignments?.[r.name]?.some((assignment) => assignment.allocation === 0) || project.resourceAllocations?.[r.name] === 0),
-          );
+          const allocationUnknown = hasUnconfirmedAllocation(r.name, month, projects, resourceYear);
           const monthKey = `${resourceYear}-${String(month).padStart(2, "0")}`;
+          const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+          const upcoming = projects
+            .filter((project) => !["Completed", "Cancelled", "Archived"].includes(project.status))
+            .flatMap((project) => (project.resourceAssignments?.[r.name] ?? [])
+              .filter((assignment) => assignment.startDate >= today)
+              .map((assignment) => ({ project, ...assignment })))
+            .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.project.name.localeCompare(b.project.name));
           const assignedProjects = projects.filter((project) =>
             !["Completed", "Cancelled", "Archived"].includes(project.status) &&
             resourceActiveInMonth(r.name, project, month, resourceYear) &&
@@ -1254,12 +1258,12 @@ function Resources() {
                 <Badge
                   tone={teachingOnly ? "blue" : alloc > 100 ? "red" : alloc >= 80 ? "amber" : "teal"}
                 >
-                  {teachingOnly ? "강의" : allocationUnknown ? "투입률 미확정" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
+                  {teachingOnly ? "강의" : allocationUnknown ? "일부 투입률 미확정" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
                 </Badge>
               </div>
               {!teachingOnly && <><div className="capacity">
-                <span>월간 할당</span>
-                <strong>{allocationUnknown ? "미확정" : `${alloc}%`}</strong>
+                <span>{allocationUnknown ? "등록된 투입률 합계" : "월간 할당"}</span>
+                <strong>{alloc}%</strong>
               </div>
               <div className="progress">
                 <i style={{ width: `${Math.min(alloc, 100)}%` }} />
@@ -1286,10 +1290,19 @@ function Resources() {
                   return <Link key={project.id} to={`/projects/${project.id}`} className="resource-project">
                     <strong>{project.customer}</strong>
                     <span>{project.name}</span>
-                    {teachingOnly && (dates.length ? dates.map((date, index) => <time key={index} dateTime={date.startDate}>{date.startDate}{date.endDate !== date.startDate ? ` ~ ${date.endDate}` : ""}</time>) : <time>{project.startDate === project.endDate ? project.startDate : "강의일 확인 필요"}</time>)}
+                    {dates.map((date, index) => <time key={index} dateTime={date.startDate}>{date.startDate}</time>)}
+                    {teachingOnly && !dates.length && <time>{project.startDate === project.endDate ? project.startDate : "강의일 확인 필요"}</time>}
                   </Link>;
                 })}
               </div>
+              {upcoming.length > 0 && <div className="resource-projects">
+                <h3>예정 일정</h3>
+                {upcoming.map((assignment) => <Link key={`${assignment.project.id}-${assignment.startDate}`} to={`/projects/${assignment.project.id}`} className="resource-project">
+                  <strong>{assignment.project.customer}</strong>
+                  <span>{assignment.project.name}</span>
+                  <time dateTime={assignment.startDate}>{assignment.startDate}{assignment.endDate !== assignment.startDate ? ` ~ ${assignment.endDate}` : ""}</time>
+                </Link>)}
+              </div>}
             </article>
           );
         })}

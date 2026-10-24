@@ -121,6 +121,15 @@ export function allocationFor(resource: string, month: number, rows: Project[], 
     }, 0)
 }
 
+export function hasUnconfirmedAllocation(resource: string, month: number, rows: Project[], year = 2026) {
+  return rows.some(project => {
+    if (!project.resources.includes(resource) || ['Completed', 'Cancelled', 'Archived'].includes(project.status)) return false
+    const assignments = project.resourceAssignments?.[resource]
+    if (assignments?.length) return assignments.some(assignment => assignment.allocation === 0 && assignmentActiveInMonth(assignment, month, year))
+    return project.resourceAllocations?.[resource] === 0 && activeInMonth(project, month, year)
+  })
+}
+
 export function toCsv(rows: Project[]) {
   const quote = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`
   const header = ['Customer','Project Name','Category','Work Mode','Probability','Status','Start Date','End Date','Project Manager','Assigned Resources','Scope','Progress','Risk','Notes']
