@@ -125,7 +125,11 @@ export function hasUnconfirmedAllocation(resource: string, month: number, rows: 
   return rows.some(project => {
     if (!project.resources.includes(resource) || ['Completed', 'Cancelled', 'Archived'].includes(project.status)) return false
     const assignments = project.resourceAssignments?.[resource]
-    if (assignments?.length) return assignments.some(assignment => assignment.allocation === 0 && assignmentActiveInMonth(assignment, month, year))
+    if (assignments?.length) return assignments.some(assignment =>
+      assignment.allocation === 0 && assignmentActiveInMonth(assignment, month, year) &&
+      !assignments.some(confirmed => confirmed.allocation === 100 &&
+        confirmed.startDate <= assignment.startDate && confirmed.endDate >= assignment.endDate),
+    )
     return project.resourceAllocations?.[resource] === 0 && activeInMonth(project, month, year)
   })
 }

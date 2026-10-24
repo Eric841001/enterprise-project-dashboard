@@ -1286,11 +1286,13 @@ function Resources() {
                 {assignedProjects.length === 0 && <p className="muted">{teachingOnly ? "등록된 강의 일정 없음" : "배정된 프로젝트 없음"}</p>}
                 {assignedProjects.map((project) => {
                   const dates = (project.resourceAssignments?.[r.name] ?? [])
-                    .filter((assignment) => assignment.startDate === assignment.endDate && assignment.startDate.startsWith(monthKey));
+                    .filter((assignment) => teachingOnly
+                      ? assignment.startDate === assignment.endDate && assignment.startDate.startsWith(monthKey)
+                      : assignment.startDate.slice(0, 7) <= monthKey && assignment.endDate.slice(0, 7) >= monthKey);
                   return <Link key={project.id} to={`/projects/${project.id}`} className="resource-project">
                     <strong>{project.customer}</strong>
                     <span>{project.name}</span>
-                    {dates.map((date, index) => <time key={index} dateTime={date.startDate}>{date.startDate}</time>)}
+                    {dates.map((date, index) => <time key={index} dateTime={date.startDate}>{date.startDate}{date.endDate !== date.startDate ? ` ~ ${date.endDate}` : ""}</time>)}
                     {teachingOnly && !dates.length && <time>{project.startDate === project.endDate ? project.startDate : "강의일 확인 필요"}</time>}
                   </Link>;
                 })}
