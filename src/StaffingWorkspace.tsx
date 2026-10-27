@@ -43,7 +43,7 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
   const [view, setView] = useState('matrix')
   const [filter, setFilter] = useState('all')
   const [detail, setDetail] = useState<{ resource: Resource; period: Period } | null>(null)
-  const [simulator, setSimulator] = useState<Resource | null>(null)
+  const [simulator, setSimulator] = useState<{ resource: Resource; period: Period } | null>(null)
   const [queue, setQueue] = useState<'unassigned' | 'stale' | 'unscheduled'>('unassigned')
   const periods = planningMonths(year, month)
   const loads = resources.map(resource => ({ resource, load: resourceLoad(resource, year, month, projects) }))
@@ -78,7 +78,7 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
         })}
       </div>
       {view !== 'people' && <div className="staffing-actions">
-        <button type="button" className="secondary" disabled={!resources.length} onClick={() => setSimulator(resources[0])}><SlidersHorizontal /> 배정 검토</button>
+        <button type="button" className="secondary" disabled={!resources.length} onClick={() => setSimulator({ resource: resources[0], period: periods[0] })}><SlidersHorizontal /> 배정 검토</button>
         {view === 'matrix' && <button type="button" className="icon" disabled={!shown.length} onClick={download} aria-label="월별 투입률 CSV 다운로드" title="CSV 다운로드"><Download /></button>}
       </div>}
     </div>
@@ -114,13 +114,13 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
         <div className="staffing-queue">{review[queue].map(p => <Link key={p.id} to={`/projects/${p.id}`}><span><strong>{p.customer}</strong><span>{p.name}</span><small>{statusLabels[p.status] ?? p.status} · {p.manager} · 최근 변경 {p.updatedAt}</small></span><ArrowRight /></Link>)}{!review[queue].length && <div className="staffing-empty"><Check /><p>해당하는 프로젝트가 없습니다.</p></div>}</div>
       </>}
     </div>
-    {detail && <ResourceDetail resource={detail.resource} initialPeriod={detail.period} projects={projects} onClose={closeDetail} onSimulate={() => { setSimulator(detail.resource); setDetail(null) }} />}
-    {simulator && <AllocationSimulation resources={resources} initial={simulator} year={year} month={month} projects={projects} onClose={closeSimulator} />}
+    {detail && <ResourceDetail resource={detail.resource} initialPeriod={detail.period} projects={projects} onClose={closeDetail} onSimulate={period => { setSimulator({ resource: detail.resource, period }); setDetail(null) }} />}
+    {simulator && <AllocationSimulation resources={resources} initial={simulator.resource} year={simulator.period.year} month={simulator.period.month} projects={projects} onClose={closeSimulator} />}
   </div>
 }
 
 function ResourceDetail({ resource, initialPeriod, projects, onClose, onSimulate }: {
-  resource: Resource; initialPeriod: Period; projects: Project[]; onClose: () => void; onSimulate: () => void
+  resource: Resource; initialPeriod: Period; projects: Project[]; onClose: () => void; onSimulate: (period: Period) => void
 }) {
   const [period, setPeriod] = useState(initialPeriod)
   const load = resourceLoad(resource, period.year, period.month, projects)
@@ -140,7 +140,7 @@ function ResourceDetail({ resource, initialPeriod, projects, onClose, onSimulate
       </div>)}{!load.lines.length && <p className="muted">이달 배정된 프로젝트가 없습니다.</p>}</div>
       <details className="staffing-history"><summary>프로젝트 이력 <b>{history.length}</b></summary>{history.map(p => <Link key={p.id} to={`/projects/${p.id}`} onClick={onClose}><span>{p.customer} · {p.name}</span><small>{statusLabels[p.status] ?? p.status}</small></Link>)}</details>
     </div>
-    <footer><span>배정 기록 기준 · 휴가 미반영</span><button className="primary" onClick={onSimulate}><SlidersHorizontal />추가 배정 검토</button></footer>
+    <footer><span>배정 기록 기준 · 휴가 미반영</span><button className="primary" onClick={() => onSimulate(period)}><SlidersHorizontal />추가 배정 검토</button></footer>
   </Modal>
 }
 

@@ -43,6 +43,14 @@ describe('staffing workflow',()=>{
     fireEvent.click(screen.getByRole('tab',{name:'인력별 보기'}))
     expect(screen.getByText('기존 인력 카드')).toBeInTheDocument()
   })
+  it('carries the detail month into the additional assignment simulation',()=>{
+    setup()
+    fireEvent.click(screen.getByRole('button',{name:'검증 인력 2026년 12월 투입 상세'}))
+    fireEvent.click(screen.getByRole('button',{name:'추가 배정 검토'}))
+    const dialog=screen.getByRole('dialog',{name:'추가 배정 검토'})
+    expect(within(dialog).getByLabelText('시작일')).toHaveValue('2026-12-01')
+    expect(within(dialog).getByLabelText('종료일')).toHaveValue('2026-12-31')
+  })
   it('supports keyboard tab navigation',()=>{
     setup()
     fireEvent.keyDown(screen.getByRole('tab',{name:'월별 투입률'}),{key:'ArrowRight'})
