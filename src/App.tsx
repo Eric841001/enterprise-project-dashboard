@@ -60,8 +60,6 @@ import {
 } from "./ManagementDialogs";
 import {
   activeInMonth,
-  allocationFor,
-  hasUnconfirmedAllocation,
   projectHasVisibleOwner,
   resourceActiveInMonth,
   projectWarnings,
@@ -69,6 +67,8 @@ import {
 } from "./lib/portfolio";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import type { Project, Resource, RiskLevel } from "./types";
+import { StaffingWorkspace } from "./StaffingWorkspace";
+import { resourceLoad, reviewProjects, seoulToday } from "./lib/staffing";
 
 let projects: Project[] = [];
 let resources: Resource[] = [];
@@ -439,7 +439,7 @@ function Shell() {
             )}
           </div>
           <div className="header-actions">
-            <span className="sync">{isSupabaseConfigured ? "실시간 데이터" : "샘플 데이터"}</span>
+            <span className="sync">{isSupabaseConfigured ? "실시간 데이터" : import.meta.env.DEV && import.meta.env.MODE === "test" ? "로컬 검증 데이터" : "데이터 연결 없음"}</span>
             <button
               className="icon"
               onClick={() => setDark(!dark)}
@@ -562,14 +562,16 @@ function Dashboard() {
     ["Confirmed", "Planning", "In Progress"].includes(p.status),
   );
   const high = projects.filter((p) => p.risk === "High");
-  const assigned = new Set(projects.flatMap((p) => [...p.resources, ...(p.manager !== "미지정" ? [p.manager] : [])])).size;
+  const assigned = resources.filter(resource => active.some(p => p.resources.includes(resource.name) || p.manager === resource.name)).length;
   const now = new Date();
   const dashboardYear = now.getFullYear();
   const dashboardMonth = now.getMonth() + 1;
-  const overallocated = resources.filter((resource) => allocationFor(resource.name, dashboardMonth, projects, dashboardYear) > 100);
+  const overallocated = resources.filter((resource) => resourceLoad(resource, dashboardYear, dashboardMonth, projects).tone === "over");
   const unassigned = projects.filter((project) => !projectHasVisibleOwner(project));
   const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
   const followUps = projects.filter((project) => project.followUpStatus === "Pending" || project.followUpStatus === "Waiting");
+  const review = reviewProjects(projects);
+  const weightedPipeline = projects.filter(p => ["Lead","Qualified","Proposal","Negotiation"].includes(p.status)).reduce((sum,p) => sum + p.probability / 100, 0);
   const statusData = Object.entries(
     projects.reduce<Record<string, number>>(
       (a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a),
@@ -606,16 +608,16 @@ function Dashboard() {
           label="운영 프로젝트"
           value={active.length}
           note="확정·계획·진행"
-          trend="+2 이번 달"
         />
         <Kpi
           label="파이프라인"
           value={projects.filter((p) => p.probability < 100).length}
-          note="가중 프로젝트 2.5건"
+          note={`가중 프로젝트 ${weightedPipeline.toFixed(1)}건`}
         />
         <Kpi label="고위험" value={high.length} note="즉시 검토 필요" danger />
         <Kpi label="할당 리소스" value={assigned} note={`${overallocated.length}명 과부하 · ${resources.length - assigned}명 미배정`} />
       </section>
+      <div className="staffing-overview-link"><div><strong>리소스 운영</strong><span>인력 미배정 {review.unassigned.length}건 · 7일 이상 미갱신 {review.stale.length}건</span></div><Link className="secondary" to="/resources"><Users />투입 현황 검토 <ChevronRight /></Link></div>
       <section className="dashboard-grid">
         <article className="panel chart-panel">
           <PanelHead
@@ -1215,8 +1217,9 @@ function Resources() {
       {error && <div className="warning" role="alert"><AlertTriangle /><span>{error} <a href="https://eric841001.github.io/enterprise-project-dashboard/resources">운영 리소스 확인</a></span></div>}
       <div className="toolbar">
         <label className="search-box"><Search /><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="이름·역할·기술 검색" /></label>
-        <select value={resourceYear} onChange={(event) => setResourceYear(Number(event.target.value))}>{resourceYears.map((item) => <option key={item}>{item}</option>)}</select>
+        <select aria-label="기준 연도" value={resourceYear} onChange={(event) => setResourceYear(Number(event.target.value))}>{resourceYears.map((item) => <option key={item}>{item}</option>)}</select>
         <select
+          aria-label="기준 월"
           value={month}
           onChange={(e) => setMonth(Number(e.target.value))}
         >
@@ -1227,13 +1230,15 @@ function Resources() {
           ))}
         </select>
       </div>
+      <StaffingWorkspace resources={visibleResources} projects={projects} year={resourceYear} month={month}>
       <section className="resource-grid">
         {visibleResources.map((r) => {
-          const alloc = allocationFor(r.name, month, projects, resourceYear);
+          const load = resourceLoad(r, resourceYear, month, projects);
+          const alloc = load.total;
           const teachingOnly = r.name === "진미나";
-          const allocationUnknown = hasUnconfirmedAllocation(r.name, month, projects, resourceYear);
+          const allocationUnknown = load.unknown;
           const monthKey = `${resourceYear}-${String(month).padStart(2, "0")}`;
-          const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+          const today = seoulToday();
           const upcoming = projects
             .filter((project) => !["Completed", "Cancelled", "Archived"].includes(project.status))
             .flatMap((project) => (project.resourceAssignments?.[r.name] ?? [])
@@ -1256,17 +1261,17 @@ function Resources() {
                   <p>{r.role}</p>
                 </div>
                 <Badge
-                  tone={teachingOnly ? "blue" : alloc > 100 ? "red" : alloc >= 80 ? "amber" : "teal"}
+                  tone={teachingOnly ? "blue" : alloc > r.capacity ? "red" : alloc >= r.capacity * .8 ? "amber" : "teal"}
                 >
-                  {teachingOnly ? "강의" : allocationUnknown ? "일부 투입률 미확정" : alloc > 100 ? "과부하" : alloc >= 80 ? "용량 임박" : "가용"}
+                  {teachingOnly ? "강의" : allocationUnknown ? "일부 투입률 미확정" : alloc > r.capacity ? "과부하" : load.tentative > 0 ? "예정 포함" : alloc >= r.capacity * .8 && alloc > 0 ? "용량 임박" : "가용"}
                 </Badge>
               </div>
               {!teachingOnly && <><div className="capacity">
-                <span>{allocationUnknown ? "등록된 투입률 합계" : "월간 할당"}</span>
+                <span>{allocationUnknown ? "등록된 투입률 합계" : load.tentative > 0 ? "확정·예정 합계" : "월간 할당"}</span>
                 <strong>{alloc}%</strong>
               </div>
               <div className="progress">
-                <i style={{ width: `${Math.min(alloc, 100)}%` }} />
+                <i style={{ width: `${r.capacity > 0 ? Math.min(alloc / r.capacity * 100, 100) : alloc > 0 ? 100 : 0}%` }} />
               </div></>}
               <div className="resource-meta">
                 <span>
@@ -1309,6 +1314,7 @@ function Resources() {
           );
         })}
       </section>
+      </StaffingWorkspace>
     </>
   );
 }

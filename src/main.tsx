@@ -5,6 +5,7 @@ import App from "./App";
 import "./styles.css";
 import "./editor.css";
 import "./readability.css";
+import "./operations.css";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 createRoot(document.getElementById("root")!).render(
