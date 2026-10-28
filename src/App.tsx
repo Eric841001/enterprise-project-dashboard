@@ -12,8 +12,8 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import {
   AlertTriangle,
@@ -36,6 +36,7 @@ import {
   Sun,
   Users,
   X,
+  RefreshCw,
 } from "lucide-react";
 import {
   Bar,
@@ -60,7 +61,6 @@ import {
 } from "./ManagementDialogs";
 import {
   activeInMonth,
-  projectHasVisibleOwner,
   resourceActiveInMonth,
   projectWarnings,
   toCsv,
@@ -71,6 +71,10 @@ import { StaffingWorkspace } from "./StaffingWorkspace";
 import { resourceLoad, reviewProjects, seoulToday } from "./lib/staffing";
 import { PortfolioTrends, ProjectEvidence, ProjectHistory } from './OperationsHistory';
 import { dailyLoad } from './lib/timeline';
+import { WorkspaceSearch } from './WorkspaceSearch';
+import { OperationsInbox } from './OperationsInbox';
+import { PeriodNavigator } from './PeriodNavigator';
+import { monthlyPortfolio, operationalInbox, parseMonth, pipelineStatuses } from './lib/workspace';
 
 let projects: Project[] = [];
 let resources: Resource[] = [];
@@ -93,10 +97,6 @@ const projectStatuses = [
   "Lead", "Qualified", "Proposal", "Negotiation", "Confirmed", "Planning",
   "In Progress", "On Hold", "At Risk", "Completed", "Cancelled", "Archived",
 ] as const;
-
-function projectDisplayPeople(project: Project) {
-  return project.resources.length ? project.resources.join(", ") : project.manager !== "미지정" ? project.manager : "담당자 미지정";
-}
 
 const colors = [
   "#0b69a3",
@@ -358,20 +358,20 @@ function Shell() {
   projects = portfolio.projects;
   resources = portfolio.resources;
   const [open, setOpen] = useState(false);
+  const [compact,setCompact]=useState(()=>window.matchMedia?.('(max-width:760px)').matches??false);
   const [dark, setDark] = useState(() => localStorage.getItem("portfolio-theme") === "dark");
-  const [globalQuery, setGlobalQuery] = useState("");
   const [showAlerts, setShowAlerts] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
-  const globalMatches = globalQuery.trim()
-    ? portfolio.projects.filter((project) => `${project.customer} ${project.name} ${project.manager} ${project.resources.join(" ")}`.toLowerCase().includes(globalQuery.toLowerCase())).slice(0, 6)
-    : [];
-  const alerts = portfolio.projects.filter((project) => project.risk === "High" || !project.startDate || !projectHasVisibleOwner(project));
-  useEffect(() => setOpen(false), [location.pathname]);
+  const alerts = operationalInbox(portfolio.projects);
+  useEffect(()=>{const media=window.matchMedia?.('(max-width:760px)');if(!media)return;const update=()=>{setCompact(media.matches);if(!media.matches)setOpen(false)};media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
+  useEffect(() => {setOpen(false);setShowAlerts(false)}, [location.pathname]);
   useEffect(() => localStorage.setItem("portfolio-theme", dark ? "dark" : "light"), [dark]);
+  useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){setOpen(false);setShowAlerts(false)}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[]);
+  useEffect(()=>{if(!open)return;const sidebar=document.querySelector<HTMLElement>('.sidebar'),previous=document.activeElement as HTMLElement|null;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';const items=()=>[...(sidebar?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled)')??[])].filter(e=>e.getClientRects().length>0);items()[0]?.focus();const trap=(e:KeyboardEvent)=>{if(e.key!=='Tab')return;const elements=items(),first=elements[0],last=elements[elements.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};window.addEventListener('keydown',trap);return()=>{window.removeEventListener('keydown',trap);document.body.style.overflow=overflow;previous?.focus()}},[open]);
+  useEffect(()=>{if(!showAlerts)return;const close=(e:PointerEvent)=>{if(!(e.target as Element).closest?.('.header-actions'))setShowAlerts(false)};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[showAlerts]);
   return (
     <div className={dark ? "app dark" : "app"}>
-      <aside className={open ? "sidebar open" : "sidebar"}>
+      <aside id="workspace-navigation" className={open ? "sidebar open" : "sidebar"} inert={compact&&!open} aria-hidden={compact&&!open?true:undefined}>
         <div className="logo">
           <div className="brand-mark small">P</div>
           <div>
@@ -404,44 +404,22 @@ function Shell() {
           </div>
         </div>
       </aside>
+      {open&&<button type="button" className="sidebar-backdrop" aria-label="메뉴 바깥 닫기" onClick={()=>setOpen(false)}/>}
       <div className="main">
         <header>
           <button
             className="icon mobile-only"
             onClick={() => setOpen(true)}
             aria-label="메뉴 열기"
+            aria-expanded={open}
+            aria-controls="workspace-navigation"
           >
             <Menu />
           </button>
-          <div className="global-search">
-            <Search />
-            <input
-              placeholder="프로젝트, 고객사, 담당자 검색"
-              aria-label="전체 검색"
-              value={globalQuery}
-              onChange={(event) => setGlobalQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && globalMatches[0]) {
-                  navigate(`/projects/${globalMatches[0].id}`);
-                  setGlobalQuery("");
-                }
-              }}
-            />
-            {globalMatches.length > 0 && (
-              <div className="search-results">
-                {globalMatches.map((project) => (
-                  <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setGlobalQuery("")}>
-                    <strong>{project.customer}</strong><span>{project.name} · {projectDisplayPeople(project)}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-            {globalQuery.trim() && globalMatches.length === 0 && (
-              <div className="search-results search-empty" role="status">일치하는 프로젝트가 없습니다.</div>
-            )}
-          </div>
+          <WorkspaceSearch projects={portfolio.projects}/>
           <div className="header-actions">
-            <span className="sync">{isSupabaseConfigured ? "실시간 데이터" : import.meta.env.DEV && import.meta.env.MODE === "test" ? "로컬 검증 데이터" : "데이터 연결 없음"}</span>
+            <span className={`sync ${portfolio.error?'sync-error':''}`} role="status">{portfolio.loading?'데이터 갱신 중':portfolio.error?'데이터 확인 필요':portfolio.refreshedAt?`최근 갱신 ${new Date(portfolio.refreshedAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false})}`:isSupabaseConfigured?'데이터 연결 중':'데이터 연결 없음'}</span>
+            <button type="button" className="icon refresh-data" disabled={portfolio.loading||!isSupabaseConfigured} aria-label="데이터 새로고침" title="승인된 최신 데이터 다시 불러오기" onClick={()=>void portfolio.refresh()}><RefreshCw className={portfolio.loading?'refresh-spinning':''}/></button>
             <button
               className="icon"
               onClick={() => setDark(!dark)}
@@ -456,8 +434,9 @@ function Shell() {
             {showAlerts && (
               <div className="notification-panel">
                 <strong>주의 항목 {alerts.length}건</strong>
-                {alerts.slice(0, 5).map((project) => <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setShowAlerts(false)}><span>{project.customer} · {project.name}</span><small>{project.risk === "High" ? "고위험" : !project.startDate ? "일정 미정" : "리소스 미지정"}</small></Link>)}
+                {alerts.slice(0, 5).map(({project,kinds}) => <Link key={project.id} to={`/projects/${project.id}`} onClick={() => setShowAlerts(false)}><span>{project.customer} · {project.name}</span><small>{kinds.includes('overdue')?'조치 기한 초과':kinds.includes('risk')?'고위험':kinds.includes('ended')?'종료일 확인':'일정·배정 확인'}</small></Link>)}
                 {!alerts.length && <p>현재 주의 항목이 없습니다.</p>}
+                <Link to="/" onClick={()=>setShowAlerts(false)}>운영 조치함 전체 보기 <ChevronRight/></Link>
               </div>
             )}
             {supabase && (
@@ -485,13 +464,6 @@ function Shell() {
           </Routes>
         </main>
       </div>
-      {open && (
-        <button
-          className="backdrop"
-          onClick={() => setOpen(false)}
-          aria-label="메뉴 닫기"
-        />
-      )}
     </div>
   );
 }
@@ -561,17 +533,14 @@ function Dashboard() {
       </div>
     );
   const active = projects.filter((p) =>
-    ["Confirmed", "Planning", "In Progress"].includes(p.status),
+    ["Confirmed", "Planning", "In Progress", "At Risk", "On Hold"].includes(p.status),
   );
-  const high = projects.filter((p) => p.risk === "High");
+  const high = projects.filter((p) => !['Completed','Cancelled','Archived'].includes(p.status)&&(p.risk === "High"||p.status==='At Risk'));
   const assigned = resources.filter(resource => active.some(p => p.resources.includes(resource.name) || p.manager === resource.name)).length;
   const now = new Date();
   const dashboardYear = now.getFullYear();
   const dashboardMonth = now.getMonth() + 1;
   const overallocated = resources.filter((resource) => dailyLoad(resource,projects,dashboardYear,dashboardMonth).peak>resource.capacity);
-  const unassigned = projects.filter((project) => !projectHasVisibleOwner(project));
-  const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
-  const followUps = projects.filter((project) => project.followUpStatus === "Pending" || project.followUpStatus === "Waiting");
   const review = reviewProjects(projects);
   const weightedPipeline = projects.filter(p => ["Lead","Qualified","Proposal","Negotiation"].includes(p.status)).reduce((sum,p) => sum + p.probability / 100, 0);
   const statusData = Object.entries(
@@ -609,16 +578,17 @@ function Dashboard() {
         <Kpi
           label="운영 프로젝트"
           value={active.length}
-          note="확정·계획·진행"
+          note="확정·계획·진행·위험·보류"
         />
         <Kpi
           label="파이프라인"
-          value={projects.filter((p) => p.probability < 100).length}
+          value={projects.filter((p) => pipelineStatuses.has(p.status)).length}
           note={`가중 프로젝트 ${weightedPipeline.toFixed(1)}건`}
         />
         <Kpi label="고위험" value={high.length} note="즉시 검토 필요" danger />
         <Kpi label="할당 리소스" value={assigned} note={`${overallocated.length}명 과부하 · ${resources.length - assigned}명 미배정`} />
       </section>
+      <OperationsInbox projects={projects}/>
       <div className="staffing-overview-link"><div><strong>리소스 운영</strong><span>인력 미배정 {review.unassigned.length}건 · 7일 이상 미갱신 {review.stale.length}건</span></div><Link className="secondary" to="/resources"><Users />투입 현황 검토 <ChevronRight /></Link></div>
       <section className="dashboard-grid">
         <article className="panel chart-panel">
@@ -632,7 +602,7 @@ function Dashboard() {
               <XAxis dataKey="month" />
               <YAxis allowDecimals={false} />
               <Tooltip />
-              <Bar dataKey="projects" fill="#0b69a3" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="projects" fill="var(--workspace-accent)" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </article>
@@ -663,39 +633,6 @@ function Dashboard() {
               </span>
             ))}
           </div>
-        </article>
-        <article className="panel attention">
-          <PanelHead
-            title="주의가 필요한 항목"
-            detail="우선순위 기준 자동 분류"
-          />
-          <Attention
-            icon={<AlertTriangle />}
-            tone="red"
-            title={`고위험 프로젝트 ${high.length}건`}
-            text={high.map((project) => project.customer).join(", ") || "해당 없음"}
-          />
-          <Attention
-            icon={<CircleHelp />}
-            tone="amber"
-            title={`후속조치 필요 ${followUps.length}건`}
-            text={followUps.map((project) => project.customer).join(", ") || "해당 없음"}
-          />
-          <Attention
-            icon={<Users />}
-            tone="amber"
-            title={`리소스 미지정 ${unassigned.length}건`}
-            text={unassigned.map((project) => project.customer).join(", ") || "해당 없음"}
-          />
-          <Attention
-            icon={<CalendarDays />}
-            tone="blue"
-            title={`일정 미확정 ${unscheduled.length}건`}
-            text={unscheduled.map((project) => project.customer).join(", ") || "해당 없음"}
-          />
-          <Link to="/projects" className="panel-link">
-            전체 프로젝트 검토 <ChevronRight />
-          </Link>
         </article>
         <article className="panel recent">
           <PanelHead title="최근 프로젝트" detail="최근 업데이트 순" />
@@ -743,29 +680,6 @@ function PanelHead({ title, detail }: { title: string; detail: string }) {
     </div>
   );
 }
-function Attention({
-  icon,
-  tone,
-  title,
-  text,
-}: {
-  icon: ReactNode;
-  tone: string;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="attention-row">
-      <div className={`signal ${tone}`}>{icon}</div>
-      <div>
-        <strong>{title}</strong>
-        <span>{text}</span>
-      </div>
-      <ChevronRight />
-    </div>
-  );
-}
-
 function useProjectFilter() {
   const { projects } = usePortfolio();
   const [query, setQuery] = useState("");
@@ -1197,18 +1111,13 @@ function Schedule() {
 }
 
 function Resources() {
-  const { canEdit, error } = usePortfolio();
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [resourceYear, setResourceYear] = useState(new Date().getFullYear());
+  const { canEdit, error, resources:people } = usePortfolio();
+  const [params,setParams]=useSearchParams();
+  const {key:periodKey,year:resourceYear,month}=parseMonth(params.get('month'));
+  const resourceQuery=params.get('q')??'';
+  function updateResourceParam(key:string,value:string){setParams(previous=>{const next=new URLSearchParams(previous);if(value.trim())next.set(key,value);else next.delete(key);return next},{replace:true})}
   const [creating, setCreating] = useState(false);
-  const [resourceQuery, setResourceQuery] = useState("");
-  const visibleResources = resources.filter((resource) => `${resource.name} ${resource.role} ${resource.skill}`.toLowerCase().includes(resourceQuery.toLowerCase()));
-  const resourceYears = Array.from(new Set([
-    new Date().getFullYear(),
-    ...projects.flatMap((project) => [project.startDate, project.endDate])
-      .filter((date): date is string => Boolean(date))
-      .map((date) => Number(date.slice(0, 4))),
-  ])).sort((a, b) => a - b);
+  const visibleResources = useMemo(()=>people.filter((resource) => `${resource.name} ${resource.role} ${resource.skill}`.toLowerCase().includes(resourceQuery.trim().toLowerCase())),[people,resourceQuery]);
   return (
     <>
       <PageTitle
@@ -1220,19 +1129,9 @@ function Resources() {
       <ResourceFormDialog open={creating} onClose={() => setCreating(false)} />
       {error && <div className="warning" role="alert"><AlertTriangle /><span>{error} <a href="https://eric841001.github.io/enterprise-project-dashboard/resources">운영 리소스 확인</a></span></div>}
       <div className="toolbar">
-        <label className="search-box"><Search /><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="이름·역할·기술 검색" /></label>
-        <select aria-label="기준 연도" value={resourceYear} onChange={(event) => setResourceYear(Number(event.target.value))}>{resourceYears.map((item) => <option key={item}>{item}</option>)}</select>
-        <select
-          aria-label="기준 월"
-          value={month}
-          onChange={(e) => setMonth(Number(e.target.value))}
-        >
-          {Array.from({ length: 12 }, (_, i) => (
-            <option value={i + 1} key={i}>
-              {i + 1}월
-            </option>
-          ))}
-        </select>
+        <label className="search-box"><Search /><input aria-label="인력 검색" value={resourceQuery} onChange={(event) => updateResourceParam('q',event.target.value)} placeholder="이름·역할·기술 검색" /></label>
+        <PeriodNavigator value={periodKey} onChange={value=>updateResourceParam('month',value)}/>
+        <Link className="secondary period-report-link" to={`/reports?month=${periodKey}`}><FileBarChart/>이달 보고서</Link>
       </div>
       <StaffingWorkspace resources={visibleResources} projects={projects} year={resourceYear} month={month}>
       <section className="resource-grid">
@@ -1377,13 +1276,11 @@ function Customers() {
 }
 
 function Reports() {
-  const reportDate = new Date();
-  const reportYear = reportDate.getFullYear();
-  const reportMonth = reportDate.getMonth() + 1;
-  const reportMonthLabel = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(reportDate);
+  const [params,setParams]=useSearchParams();
+  const {key:reportKey,year:reportYear,month:reportMonth}=parseMonth(params.get('month'));
+  const reportMonthLabel=`${reportYear}년 ${reportMonth}월`;
   const [openReport, setOpenReport] = useState<ReportKind | null>(null);
-  const confirmed = projects.filter((p) => p.probability === 100).length;
-  const high = projects.filter((p) => p.risk === "High").length;
+  const summary=monthlyPortfolio(projects,reportYear,reportMonth);
   return (
     <>
       <PageTitle
@@ -1391,26 +1288,22 @@ function Reports() {
         title="리포트"
         desc="현재 포트폴리오 데이터를 바탕으로 한 결정론적 경영 요약입니다."
       />
-      <ReportDialog kind={openReport} onClose={() => setOpenReport(null)} />
-      <PortfolioTrends />
+      <div className="report-period-bar"><PeriodNavigator label="보고서 기준 월" value={reportKey} onChange={value=>{setOpenReport(null);setParams({month:value},{replace:true})}}/><Link className="secondary" to={`/resources?month=${reportKey}`}>같은 월 투입 현황 <ChevronRight/></Link></div>
+      <p className="report-scope">시작·종료일 또는 작업 구간이 등록된 프로젝트를 선택 월로 조회합니다. 기간 미정은 별도로 표시하며, 과거 시점의 상태는 변화 추적 기록에서 확인할 수 있습니다.</p>
+      <ReportDialog kind={openReport} period={{year:reportYear,month:reportMonth}} onClose={() => setOpenReport(null)} />
       <article className="panel report-hero">
         <div>
           <p className="eyebrow">{reportMonthLabel.toUpperCase()} · EXECUTIVE SUMMARY</p>
           <h2>월간 프로젝트 포트폴리오 요약</h2>
           <p>
-            전체 <strong>{projects.length}개</strong> 프로젝트 중{" "}
-            <strong>{confirmed}개</strong>가 확정되었으며, 나머지는 파이프라인
-            단계입니다. 고위험 프로젝트는 <strong>{high}개</strong>, 일정 미확정
-            프로젝트는{" "}
-            <strong>{projects.filter((p) => !p.startDate).length}개</strong>
-            입니다. {reportMonth}월에는 {projects.filter((p) => activeInMonth(p, reportMonth, reportYear)).length}
-            개 프로젝트가 동시에 운영되어 리소스 배정 검토가 필요합니다.
+            {reportMonthLabel} 일정이 있는 프로젝트는 <strong>{summary.dated.length}개</strong>입니다. 이 중 확정·운영 단계 <strong>{summary.confirmed.length}개</strong>, 파이프라인 <strong>{summary.pipeline.length}개</strong>, 완료·취소·보관 <strong>{summary.closed.length}개</strong>입니다. 선택 월의 고위험 운영 프로젝트는 <strong>{summary.high.length}개</strong>입니다.
           </p>
         </div>
         <button className="secondary" onClick={() => window.print()}>
           <Download /> PDF로 인쇄
         </button>
       </article>
+      <div className="report-metrics"><div><span>선택 월 운영</span><strong>{summary.open.length}<small>건</small></strong></div><div><span>확정·운영 단계</span><strong>{summary.confirmed.length}<small>건</small></strong></div><div><span>선택 월 파이프라인</span><strong>{summary.pipeline.length}<small>건</small></strong></div><div><span>전체 기간 확인 필요</span><strong>{summary.unscheduled.length}<small>건</small></strong></div></div>
       <section className="report-grid">
         {([
           "월간 포트폴리오",
@@ -1419,16 +1312,14 @@ function Reports() {
           "위험 및 이슈",
           "고객사 요약",
           "업데이트 준수",
-        ] as ReportKind[]).map((x, i) => (
+        ] as ReportKind[]).map((x) => (
           <article className="panel report-card" key={x}>
             <div className="report-icon">
               <BarChart3 />
             </div>
             <h2>{x}</h2>
             <p>
-              {i % 2 === 0
-                ? "월별 추세와 주요 변화를 경영진 관점에서 확인합니다."
-                : "필터링된 데이터를 표와 요약으로 내보냅니다."}
+              {x==='리소스 활용률'?'날짜별 최대·등록 합계·확인 상태를 함께 비교합니다.':x==='업데이트 준수'?'선택 월과 기간 미정 운영 프로젝트의 최근 갱신을 점검합니다.':x==='위험 및 이슈'?'선택 월의 위험과 기간 미정 운영 프로젝트를 확인합니다.':`${reportMonthLabel}에 일정이 있는 프로젝트를 기준으로 내보냅니다.`}
             </p>
             <button className="text-button" onClick={() => setOpenReport(x)}>
               리포트 열기 <ChevronRight />
@@ -1436,6 +1327,7 @@ function Reports() {
           </article>
         ))}
       </section>
+      <PortfolioTrends />
     </>
   );
 }

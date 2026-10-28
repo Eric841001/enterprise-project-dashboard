@@ -26,6 +26,7 @@ interface PortfolioContextValue {
   canEdit: boolean;
   loading: boolean;
   error: string;
+  refreshedAt: string | null;
   refresh: () => Promise<void>;
 }
 interface ProjectRow {
@@ -117,6 +118,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   );
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState("");
+  const [refreshedAt,setRefreshedAt]=useState<string|null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [role, setRole] = useState<"admin" | "manager" | "viewer">("viewer");
 
@@ -311,14 +313,15 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       }),
     );
     setLoading(false);
+    setRefreshedAt(new Date().toISOString());
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
   const value = useMemo(
-    () => ({ projects, resources, customers, role, canEdit, loading, error, refresh }),
-    [projects, resources, customers, role, canEdit, loading, error, refresh],
+    () => ({ projects, resources, customers, role, canEdit, loading, error, refresh,refreshedAt }),
+    [projects, resources, customers, role, canEdit, loading, error, refresh,refreshedAt],
   );
   return (
     <PortfolioContext.Provider value={value}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Download, X } from "lucide-react";
-import { csvCell, resourceLoad, seoulToday } from './lib/staffing';
+import { csvCell, seoulToday } from './lib/staffing';
+import {buildReport,type ReportKind} from './lib/reporting';
 import { supabase } from "./lib/supabase";
 import { usePortfolio } from "./portfolio-context";
 import type { EvidenceBasis, FollowUpStatus, Project, ProjectStatus, RiskLevel, VerificationState, WorkMode } from "./types";
@@ -231,26 +232,15 @@ export function ResourceFormDialog({ open, onClose }: { open: boolean; onClose: 
   return <Dialog open={open} onClose={onClose} title="리소스 등록" eyebrow="RESOURCE MANAGEMENT"><form onSubmit={submit}><div className="form-grid one-col"><label>이름<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>역할<select value={role} onChange={(e) => setRole(e.target.value)}><option>Project Manager</option><option>Presales Consultant</option><option>Technical Consultant</option><option>M365 Engineer</option><option>Power Platform Engineer</option><option>Azure Engineer</option><option>Security Engineer</option><option>Migration Engineer</option><option>Trainer</option><option>Developer</option></select></label><label>주요 기술<input value={skill} onChange={(e) => setSkill(e.target.value)} /></label><label>가용 용량<input type="number" min="0" max="100" value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} /></label></div>{error && <p className="form-error">{error}</p>}<div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>취소</button><button className="primary" disabled={busy}>등록</button></div></form></Dialog>;
 }
 
-export type ReportKind = "월간 포트폴리오" | "확정 vs 파이프라인" | "리소스 활용률" | "위험 및 이슈" | "고객사 요약" | "업데이트 준수";
+export type {ReportKind} from './lib/reporting';
 
-export function ReportDialog({ kind, onClose }: { kind: ReportKind | null; onClose: () => void }) {
+export function ReportDialog({ kind, onClose,period }: { kind: ReportKind | null; onClose: () => void;period?:{year:number;month:number} }) {
   const { projects, resources } = usePortfolio();
   const reportDate = new Date(`${seoulToday()}T12:00:00+09:00`);
-  const reportYear = reportDate.getFullYear();
-  const reportMonth = reportDate.getMonth() + 1;
-  const staleThreshold = new Date(reportDate); staleThreshold.setDate(staleThreshold.getDate() - 14);
-  const staleDate = staleThreshold.toISOString().slice(0, 10);
-  const rows = useMemo(() => {
-    if (!kind) return [] as string[][];
-    if (kind === "리소스 활용률") return resources.map((resource) => {const l=resourceLoad(resource,reportYear,reportMonth,projects);return [resource.name,resource.role,`${l.total}%`,`새 근거 확인 ${l.confirmed}% / 예정 ${l.tentative}% / 기존 등록 유지 ${l.legacy}% / 미확인 ${l.unverified}%${l.unknown?' · 확인 필요':''}`,resource.skill]});
-    if (kind === "고객사 요약") return Array.from(new Set(projects.map((project) => project.customer))).map((customer) => { const items = projects.filter((project) => project.customer === customer); return [customer, String(items.length), String(items.filter((item) => item.probability === 100).length), String(items.filter((item) => item.probability < 100).length)]; });
-    if (kind === "위험 및 이슈") return projects.filter((project) => project.risk !== "Low" || !project.startDate || !project.resources.length).map((project) => [project.customer, project.name, project.risk, !project.startDate ? "일정 미정" : !project.resources.length ? "리소스 미지정" : "위험 검토"]);
-    if (kind === "업데이트 준수") return [...projects].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((project) => [project.customer, project.name, project.updatedAt, project.updatedAt < staleDate ? "업데이트 필요" : "정상"]);
-    return projects.filter((project) => kind !== "확정 vs 파이프라인" || project.probability > 0).map((project) => [project.customer, project.name, `${project.probability}%`, project.status, project.startDate ?? "미정", project.endDate ?? "미정"]);
-  }, [kind, projects, resources, reportMonth, reportYear, staleDate]);
-  const headers = kind === "리소스 활용률" ? ["리소스", "역할", `${reportMonth}월 등록 합계`, "확인 구분", "주요 기술"] : kind === "고객사 요약" ? ["고객사", "전체", "확정", "파이프라인"] : kind === "위험 및 이슈" ? ["고객사", "프로젝트", "위험", "검토 항목"] : kind === "업데이트 준수" ? ["고객사", "프로젝트", "최근 업데이트", "상태"] : ["고객사", "프로젝트", "확률", "상태", "시작일", "종료일"];
-  function download() { if (!kind) return; const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
-  return <Dialog open={Boolean(kind)} onClose={onClose} title={kind ?? "리포트"} eyebrow="MANAGEMENT REPORT" wide><div className="report-actions"><button className="secondary" onClick={download}><Download /> CSV 내보내기</button><button className="secondary" onClick={() => window.print()}>인쇄 / PDF</button></div><div className="table-wrap report-table"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div><p className="dialog-note">현재 승인된 포트폴리오 데이터를 기준으로 생성되었습니다. 총 {rows.length}개 항목입니다.</p></Dialog>;
+  const reportYear=period?.year??reportDate.getFullYear(),reportMonth=period?.month??reportDate.getMonth()+1;
+  const {headers,rows,scope}=useMemo(()=>kind?buildReport(kind,projects,resources,reportYear,reportMonth):{headers:[],rows:[],scope:''},[kind,projects,resources,reportYear,reportMonth]);
+  function download() { if (!kind) return; const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}-${reportYear}-${String(reportMonth).padStart(2,'0')}.csv`; anchor.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+  return <Dialog open={Boolean(kind)} onClose={onClose} title={kind ?? "리포트"} eyebrow="MANAGEMENT REPORT" wide><p className="report-export-scope">{scope}</p><div className="report-actions"><button className="secondary" disabled={!rows.length} onClick={download}><Download /> CSV 내보내기</button><button className="secondary" onClick={() => window.print()}>인쇄 / PDF</button></div>{rows.length?<div className="table-wrap report-table"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>:<div className="inbox-empty"><strong>선택한 기준에 해당하는 항목이 없습니다.</strong><span>다른 월을 선택하거나 운영 데이터의 기간을 확인해 주세요.</span></div>}<p className="dialog-note">승인된 포트폴리오 기준 · 총 {rows.length}개 항목</p></Dialog>;
 }
 
 // Shared with the read-only settings summary.

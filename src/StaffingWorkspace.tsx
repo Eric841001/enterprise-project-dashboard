@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AlertCircle, ArrowRight, CalendarRange, Check, ChevronLeft, ChevronRight, ClipboardList, Download, Grid2X2, SlidersHorizontal, Table2, Users, X } from 'lucide-react'
 import type { Project, Resource } from './types'
 import { compareDraft, planningMonths, resourceLoad, reviewProjects, seoulToday, staffingCsv } from './lib/staffing'
@@ -42,14 +42,19 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 export function StaffingWorkspace({ resources, projects, year, month, children }: {
   resources: Resource[]; projects: Project[]; year: number; month: number; children: ReactNode
 }) {
-  const [view, setView] = useState('matrix')
-  const [filter, setFilter] = useState('all')
+  const [params,setParams]=useSearchParams()
+  const view=['matrix','people','review'].includes(params.get('view')??'')?params.get('view')!:'matrix'
+  const filter=['all','over','free','unknown'].includes(params.get('filter')??'')?params.get('filter')!:'all'
+  const sort=['name','load','capacity'].includes(params.get('sort')??'')?params.get('sort')!:'name'
+  function update(values:Record<string,string>){setParams(previous=>{const next=new URLSearchParams(previous);for(const [key,value] of Object.entries(values)){if(value==='all'||value==='matrix'||key==='sort'&&value==='name')next.delete(key);else next.set(key,value)}return next},{replace:true})}
+  const setView=(value:string)=>update({view:value})
+  const setFilter=(value:string)=>update({filter:value})
   const [detail, setDetail] = useState<{ resource: Resource; period: Period } | null>(null)
   const [simulator, setSimulator] = useState<{ resource: Resource; period: Period } | null>(null)
   const [queue, setQueue] = useState<'unassigned' | 'stale' | 'unscheduled' | 'overdue' | 'ended'>('unassigned')
   const periods = planningMonths(year, month)
-  const loads = resources.map(resource => {const load=resourceLoad(resource,year,month,projects),daily=dailyLoad(resource,projects,year,month);return {resource,load,daily,free:load.unknown||daily.unknown?null:Math.max(0,load.capacity-daily.peak)}})
-  const shown = loads.filter(({ load,daily,free }) => filter === 'all' || (filter === 'free' ? free !== null && free > 0 : filter === 'over' ? daily.peak>load.capacity : load.unknown||daily.unknown))
+  const loads = useMemo(()=>resources.map(resource => {const forecast=planningMonths(year,month).map(period=>{const load=resourceLoad(resource,period.year,period.month,projects),daily=dailyLoad(resource,projects,period.year,period.month);return {period,load,daily,free:load.unknown||daily.unknown?null:Math.max(0,load.capacity-daily.peak)}});return {resource,...forecast[0],forecast}}),[resources,projects,year,month])
+  const shown = loads.filter(({ load,daily,free }) => filter === 'all' || (filter === 'free' ? free !== null && free > 0 : filter === 'over' ? daily.peak>load.capacity : load.unknown||daily.unknown)).sort((a,b)=>sort==='load'?b.daily.peak-a.daily.peak||a.resource.name.localeCompare(b.resource.name,'ko'):sort==='capacity'?(b.free??-1)-(a.free??-1)||a.resource.name.localeCompare(b.resource.name,'ko'):a.resource.name.localeCompare(b.resource.name,'ko'))
   const review = reviewProjects(projects)
   const closeDetail = useCallback(() => setDetail(null), [])
   const closeSimulator = useCallback(() => setSimulator(null), [])
@@ -60,10 +65,10 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
   }
   return <div className="staffing-workspace">
     <div className="staffing-summary" aria-label="선택 월 투입 현황">
-      <div><span>관리 인력</span><strong>{resources.length}<small>명</small></strong><span>{year}년 {month}월</span></div>
-      <div data-tone="over"><span>과할당</span><strong>{loads.filter(r => r.daily.peak>r.load.capacity).length}<small>명</small></strong><span>날짜가 겹치는 용량 초과</span></div>
-      <div data-tone="available"><span>여유 인력</span><strong>{loads.filter(r => r.free !== null && r.free > 0).length}<small>명</small></strong><span>날짜별 최대 투입 기준</span></div>
-      <div data-tone="unknown"><span>투입률 확인 필요</span><strong>{loads.filter(r => r.load.unknown).length}<small>명</small></strong><span>미입력 · 담당만 지정</span></div>
+      <button type="button" aria-label="전체 인력 보기" aria-pressed={filter==='all'&&view==='matrix'} onClick={()=>update({view:'matrix',filter:'all'})}><span>관리 인력</span><strong>{resources.length}<small>명</small></strong><span>{year}년 {month}월</span></button>
+      <button type="button" aria-label="과할당 인력 보기" aria-pressed={filter==='over'&&view==='matrix'} data-tone="over" onClick={()=>update({view:'matrix',filter:'over'})}><span>과할당</span><strong>{loads.filter(r => r.daily.peak>r.load.capacity).length}<small>명</small></strong><span>날짜가 겹치는 용량 초과</span></button>
+      <button type="button" aria-label="여유 인력 보기" aria-pressed={filter==='free'&&view==='matrix'} data-tone="available" onClick={()=>update({view:'matrix',filter:'free'})}><span>여유 인력</span><strong>{loads.filter(r => r.free !== null && r.free > 0).length}<small>명</small></strong><span>날짜별 최대 투입 기준</span></button>
+      <button type="button" aria-label="투입률 확인 필요 인력 보기" aria-pressed={filter==='unknown'&&view==='matrix'} data-tone="unknown" onClick={()=>update({view:'matrix',filter:'unknown'})}><span>투입률 확인 필요</span><strong>{loads.filter(r => r.load.unknown).length}<small>명</small></strong><span>미입력 · 담당만 지정</span></button>
     </div>
     <div className="staffing-viewbar">
       <div role="tablist" aria-label="리소스 보기">
@@ -87,20 +92,17 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
     <div id="staffing-view" role="tabpanel" aria-labelledby={`staffing-tab-${view}`}>
       {view === 'people' ? children : view === 'matrix' ? <>
         <div className="staffing-section-head"><div><h2>6개월 배정 현황</h2><span>{periods[0].label} - {periods[5].label}</span></div>
-          <label className="staffing-filter">배정 상태 <select aria-label="배정 상태 필터" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">전체 인력</option><option value="over">과할당</option><option value="free">여유 있음</option><option value="unknown">투입률 확인 필요</option></select></label>
+          <div className="staffing-controls"><label className="staffing-filter">배정 상태 <select aria-label="배정 상태 필터" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">전체 인력</option><option value="over">과할당</option><option value="free">여유 있음</option><option value="unknown">투입률 확인 필요</option></select></label><label className="staffing-filter">정렬 <select aria-label="인력 정렬" value={sort} onChange={e=>update({sort:e.target.value})}><option value="name">이름순</option><option value="load">최대 투입률 높은 순</option><option value="capacity">확인 가능한 여유순</option></select></label><span className="result-count">{shown.length}명 / {resources.length}명</span></div>
         </div>
         <div className="staffing-legend"><span><i className="firm" />확정 배정</span><span><i className="tentative" />제안·협상 포함</span><span><i className="over" />용량 초과</span><span><i className="unknown" />투입률 미입력</span></div>
         <div className="staffing-table-scroll">
           <table className="staffing-matrix"><caption className="sr-only">인력별 6개월 투입률. 월별 상세에서 프로젝트별 배정 근거 확인.</caption>
             <thead><tr><th scope="col">인력 / 주요 기술</th>{periods.map(p => <th key={p.key} scope="col" aria-current={p.key === seoulToday().slice(0, 7) ? 'date' : undefined}>{p.label}</th>)}<th scope="col">다음 여유</th></tr></thead>
-            <tbody>{shown.map(({ resource }) => {
-              const forecast = periods.map(p => {const load=resourceLoad(resource,p.year,p.month,projects),daily=dailyLoad(resource,projects,p.year,p.month);return {period:p,load,daily}})
+            <tbody>{shown.map(({ resource,forecast }) => {
               const free = forecast.find(p => !p.load.unknown && !p.daily.unknown && p.daily.peak<p.load.capacity)?.period
               return <tr key={resource.id}>
                 <th scope="row"><button className="staffing-person" onClick={() => setDetail({ resource, period: periods[0] })}><span className="avatar">{resource.name.slice(0, 2)}</span><span><strong>{resource.name}</strong><small>{resource.skill}</small></span></button></th>
-                {periods.map(period => {
-                  const l = resourceLoad(resource, period.year, period.month, projects)
-                  const d=dailyLoad(resource,projects,period.year,period.month)
+                {forecast.map(({period,load:l,daily:d}) => {
                   const tone=d.peak>l.capacity?'over':l.unknown||d.unknown?'unknown':l.tentative>0?'tentative':d.peak>=l.capacity*.8&&d.peak>0?'near':'available'
                   return <td key={period.key}><button className={`staffing-cell ${tone}`} onClick={() => setDetail({ resource, period })} title={`날짜별 최대 ${d.peak}% · 등록 합계 ${l.total}% · 새 근거 확인 ${l.confirmed}% · 예정 ${l.tentative}% · 기존 등록 ${l.legacy}%${l.unknown ? ' · 미확인 있음' : ''}`} aria-label={`${resource.name} ${period.year}년 ${period.month}월 투입 상세`}>
                     <strong>{l.unknown && d.peak === 0 ? '미입력' : `${d.peak}%`}{l.unknown && <AlertCircle aria-label="미입력 포함" />}</strong><small>{l.lines.length ? `${l.lines.length}개 프로젝트${l.total!==d.peak?` · 합계 ${l.total}%`:''}` : '배정 없음'}</small>
