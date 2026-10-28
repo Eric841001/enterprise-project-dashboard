@@ -242,7 +242,7 @@ export function ReportDialog({ kind, onClose }: { kind: ReportKind | null; onClo
   const staleDate = staleThreshold.toISOString().slice(0, 10);
   const rows = useMemo(() => {
     if (!kind) return [] as string[][];
-    if (kind === "리소스 활용률") return resources.map((resource) => {const l=resourceLoad(resource,reportYear,reportMonth,projects);return [resource.name,resource.role,`${l.total}%`,`확정 ${l.confirmed}% / 예정 ${l.tentative}% / 기존 등록 ${l.legacy}% / 근거 미확인 ${l.unverified}%${l.unknown?' · 확인 필요':''}`,resource.skill]});
+    if (kind === "리소스 활용률") return resources.map((resource) => {const l=resourceLoad(resource,reportYear,reportMonth,projects);return [resource.name,resource.role,`${l.total}%`,`새 근거 확인 ${l.confirmed}% / 예정 ${l.tentative}% / 기존 등록 유지 ${l.legacy}% / 미확인 ${l.unverified}%${l.unknown?' · 확인 필요':''}`,resource.skill]});
     if (kind === "고객사 요약") return Array.from(new Set(projects.map((project) => project.customer))).map((customer) => { const items = projects.filter((project) => project.customer === customer); return [customer, String(items.length), String(items.filter((item) => item.probability === 100).length), String(items.filter((item) => item.probability < 100).length)]; });
     if (kind === "위험 및 이슈") return projects.filter((project) => project.risk !== "Low" || !project.startDate || !project.resources.length).map((project) => [project.customer, project.name, project.risk, !project.startDate ? "일정 미정" : !project.resources.length ? "리소스 미지정" : "위험 검토"]);
     if (kind === "업데이트 준수") return [...projects].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((project) => [project.customer, project.name, project.updatedAt, project.updatedAt < staleDate ? "업데이트 필요" : "정상"]);

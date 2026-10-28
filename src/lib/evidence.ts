@@ -1,6 +1,6 @@
 import type { EvidenceBasis } from '../types'
 
-export const verificationLabels = { unverified: '미확인', tentative: '예정', confirmed: '확정', legacy: '기존 등록 · 근거 재확인' }
+export const verificationLabels = { unverified: '미확인', tentative: '예정', confirmed: '확정', legacy: '기존 등록 유지' }
 export function validBasis(basis?: EvidenceBasis | null): boolean {
   if (!basis || !Number.isFinite(Date.parse(basis.checkedAt)) || Date.parse(basis.checkedAt) > Date.now() + 60000) return false
   if (basis.source === 'gmail') return /^[a-f0-9]{12,32}$/i.test(basis.reference) || /^https:\/\/mail\.google\.com\/mail\/u\/\d+\/#(?:all|inbox|sent)\/[A-Za-z0-9]{12,256}$/.test(basis.reference)

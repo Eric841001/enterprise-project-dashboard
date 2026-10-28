@@ -102,7 +102,7 @@ export function StaffingWorkspace({ resources, projects, year, month, children }
                   const l = resourceLoad(resource, period.year, period.month, projects)
                   const d=dailyLoad(resource,projects,period.year,period.month)
                   const tone=d.peak>l.capacity?'over':l.unknown||d.unknown?'unknown':l.tentative>0?'tentative':d.peak>=l.capacity*.8&&d.peak>0?'near':'available'
-                  return <td key={period.key}><button className={`staffing-cell ${tone}`} onClick={() => setDetail({ resource, period })} title={`날짜별 최대 ${d.peak}% · 등록 합계 ${l.total}% · 확정 ${l.confirmed}% · 예정 ${l.tentative}% · 기존 등록 ${l.legacy}%${l.unknown ? ' · 미확인 있음' : ''}`} aria-label={`${resource.name} ${period.year}년 ${period.month}월 투입 상세`}>
+                  return <td key={period.key}><button className={`staffing-cell ${tone}`} onClick={() => setDetail({ resource, period })} title={`날짜별 최대 ${d.peak}% · 등록 합계 ${l.total}% · 새 근거 확인 ${l.confirmed}% · 예정 ${l.tentative}% · 기존 등록 ${l.legacy}%${l.unknown ? ' · 미확인 있음' : ''}`} aria-label={`${resource.name} ${period.year}년 ${period.month}월 투입 상세`}>
                     <strong>{l.unknown && d.peak === 0 ? '미입력' : `${d.peak}%`}{l.unknown && <AlertCircle aria-label="미입력 포함" />}</strong><small>{l.lines.length ? `${l.lines.length}개 프로젝트${l.total!==d.peak?` · 합계 ${l.total}%`:''}` : '배정 없음'}</small>
                   </button></td>
                 })}
@@ -136,7 +136,7 @@ function ResourceDetail({ resource, initialPeriod, projects, onClose, onSimulate
   return <Modal title={`${resource.name} · 배정 상세`} onClose={onClose}>
     <div className="staffing-modal-body">
       <div className="staffing-detail-top"><p>{resource.role}<br /><strong>{resource.skill}</strong></p><div className="staffing-month-switch"><button className="icon" title="이전 달" aria-label="이전 달" onClick={() => move(-1)}><ChevronLeft /></button><strong>{period.label}</strong><button className="icon" title="다음 달" aria-label="다음 달" onClick={() => move(1)}><ChevronRight /></button></div></div>
-      <div className={`staffing-load ${detailTone}`}><div><span>등록 투입률 합계</span><strong>{load.total}%</strong></div><span>{load.total>timeline.peak&&detailTone!=='over'?'기간 분산 배정':stateLabels[detailTone]}</span><small>확정 {load.confirmed}% · 예정 {load.tentative}% · 기존 등록 {load.legacy}% · 근거 미확인 {load.unverified}% · 기준 용량 {load.capacity}%</small></div>
+      <div className={`staffing-load ${detailTone}`}><div><span>등록 투입률 합계</span><strong>{load.total}%</strong></div><span>{load.total>timeline.peak&&detailTone!=='over'?'기간 분산 배정':stateLabels[detailTone]}</span><small>새 근거 확인 {load.confirmed}% · 예정 {load.tentative}% · 기존 등록 유지 {load.legacy}% · 미확인 {load.unverified}% · 기준 용량 {load.capacity}%</small></div>
       {load.unknown && <p className="staffing-caution"><AlertCircle />미입력 배정이 있어 실제 투입률은 등록 합계와 다를 수 있습니다.</p>}
       <section className="staffing-daily" aria-label="날짜별 겹침 확인"><h3>날짜별 투입 확인</h3>
         <p>월중 최대 <strong>{timeline.peak}%</strong> · 달력일 평균 <strong>{timeline.average}%</strong> · 용량 초과 <strong>{timeline.conflicts.length}일</strong></p>
