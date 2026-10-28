@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Download, X } from "lucide-react";
-import { allocationFor } from "./lib/portfolio";
+import { csvCell, resourceLoad, seoulToday } from './lib/staffing';
 import { supabase } from "./lib/supabase";
 import { usePortfolio } from "./portfolio-context";
-import type { FollowUpStatus, Project, ProjectStatus, RiskLevel, WorkMode } from "./types";
+import type { EvidenceBasis, FollowUpStatus, Project, ProjectStatus, RiskLevel, VerificationState, WorkMode } from "./types";
+import { AssignmentRowsEditor } from './AssignmentRowsEditor';
+import { EvidenceEditor } from './EvidenceEditor';
+import { assignmentErrors, saveError, type AssignmentRow } from './lib/project-save';
+import { validBasis } from './lib/evidence';
 
 const categories = [
   "M365 Consulting", "M365 Deployment", "M365 Education", "Azure Consulting",
@@ -19,25 +23,25 @@ const statuses: ProjectStatus[] = [
 
 interface CustomerOption { id: string; name: string }
 
-function Dialog({ title, eyebrow, open, onClose, children, wide = false }: {
-  title: string; eyebrow: string; open: boolean; onClose: () => void; children: ReactNode; wide?: boolean;
+function Dialog({ title, eyebrow, open, onClose, children, wide = false, locked = false }: {
+  title: string; eyebrow: string; open: boolean; onClose: () => void; children: ReactNode; wide?: boolean; locked?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !locked) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [open, onClose]);
+  }, [open, onClose,locked]);
 
   if (!open) return null;
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={() => {if(!locked)onClose()}}>
       <section className={`assignment-dialog management-dialog ${wide ? "wide-dialog" : ""}`} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="dialog-head">
           <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
-          <button className="icon" type="button" onClick={onClose} aria-label="닫기"><X /></button>
+          <button className="icon" type="button" disabled={locked} onClick={onClose} aria-label="닫기"><X /></button>
         </div>
         {children}
       </section>
@@ -65,14 +69,43 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
   const [nextActionDueDate, setNextActionDueDate] = useState("");
   const [evidenceSummary, setEvidenceSummary] = useState("");
   const [managerId, setManagerId] = useState("");
-  const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
-  const [allocations, setAllocations] = useState<Record<string, number>>({});
-  const [assignmentDates, setAssignmentDates] = useState<Record<string, { startDate: string; endDate: string }>>({});
+  const [assignmentRows, setAssignmentRows] = useState<AssignmentRow[]>([]);
+  const [baselineRows, setBaselineRows] = useState<AssignmentRow[]>([]);
+  const [expectedVersion, setExpectedVersion] = useState<string | null>(null);
+  const [initialManagerId,setInitialManagerId]=useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [contractStart, setContractStart] = useState('');
+  const [contractEnd, setContractEnd] = useState('');
+  const [contractState, setContractState] = useState<VerificationState>('unverified');
+  const [contractBasis, setContractBasis] = useState<EvidenceBasis | null>(null);
+  const [scheduleBasis, setScheduleBasis] = useState<EvidenceBasis | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open || !supabase) return;
+    let cancelled = false;
+    setLoaded(false);
+    const client = supabase;
+    void (async () => {
+      try {
+        if (!project) { setAssignmentRows([]); setBaselineRows([]); setExpectedVersion(null); setLoaded(true); return; }
+        const p = await client.from('projects').select('updated_at,project_manager_id,project_type,progress,phase,scope_summary').eq('id',project.id).single();
+        if (cancelled) return;
+        if (p.error) throw p.error;
+        if (p.data.updated_at !== project.version) throw new Error('프로젝트 정보가 변경되었습니다. 목록을 새로고침한 뒤 다시 열어 주세요.');
+        if ('project_manager_id' in p.data) {setManagerId(p.data.project_manager_id ?? '');setInitialManagerId(p.data.project_manager_id ?? '')}
+        if ('project_type' in p.data) setWorkMode(p.data.project_type ?? 'non_resident');
+        if ('progress' in p.data) setProgress(p.data.progress);
+        if ('phase' in p.data) setPhase(p.data.phase ?? '');
+        if ('scope_summary' in p.data) setScope(p.data.scope_summary ?? '');
+        const result = await client.from('project_assignments').select('*').eq('project_id',project.id).is('removed_at',null).order('id');
+        if (cancelled) return;
+        if (result.error) throw result.error;
+        setAssignmentRows(result.data as AssignmentRow[]); setBaselineRows(result.data as AssignmentRow[]);
+        setExpectedVersion(p.data.updated_at); setLoaded(true);
+      } catch (e) { if (!cancelled) setError(saveError(e instanceof Error ? e.message : String((e as {message?:string}).message ?? e))); }
+    })();
     void supabase.from("customers").select("id,name").order("name").then(({ data, error: loadError }) => {
       if (loadError) { setError(loadError.message); return; }
       const rows = (data ?? []) as CustomerOption[];
@@ -84,39 +117,24 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     setWorkMode(project?.workMode ?? "non_resident");
     setStatus(project?.status ?? "Lead");
     setProbability(project?.probability ?? 10);
-    setProgress(project?.progress ?? 0);
+    setProgress(project?.progressEstimated ? 0 : (project?.progress ?? 0));
     setRisk(project?.risk ?? "Low");
     setStartDate(project?.startDate ?? "");
     setEndDate(project?.endDate ?? "");
     setScope(project?.scope === "범위 미정" ? "" : (project?.scope ?? ""));
-    setPhase(project?.phase ?? "Planning");
+    setPhase(project?.phase === '미정' ? '' : (project?.phase ?? "Planning"));
     setFollowUpStatus(project?.followUpStatus ?? "Not Required");
     setNextAction(project?.nextAction ?? "");
     setNextActionDueDate(project?.nextActionDueDate ?? "");
     setEvidenceSummary(project?.evidenceSummary ?? "");
     setManagerId(resources.find((resource) => resource.name === project?.manager)?.id ?? "");
-    setSelectedResourceIds(resources.filter((resource) => project?.resources.includes(resource.name)).map((resource) => resource.id));
-    setAllocations(Object.fromEntries(resources.map((resource) => [resource.id, project?.resourceAllocations?.[resource.name] ?? 50])));
-    setAssignmentDates(Object.fromEntries(resources.map((resource) => {
-      const assignment = project?.resourceAssignments?.[resource.name]?.[0];
-      return [resource.id, {
-        startDate: assignment?.startDate ?? project?.startDate ?? "",
-        endDate: assignment?.endDate ?? project?.endDate ?? "",
-      }];
-    })));
+    setInitialManagerId(resources.find((resource) => resource.name === project?.manager)?.id ?? '');
+    setContractStart(project?.contractStartDate ?? ''); setContractEnd(project?.contractEndDate ?? '');
+    setContractState(project?.contractState ?? 'unverified'); setContractBasis(project?.contractBasis ?? null);
+    setScheduleBasis(project?.scheduleBasis ?? null);
     setError("");
+    return () => { cancelled = true; };
   }, [open, project, resources]);
-
-  function toggleResource(id: string) {
-    setSelectedResourceIds((current) => {
-      if (current.includes(id)) return current.filter((item) => item !== id);
-      setAssignmentDates((dates) => ({
-        ...dates,
-        [id]: dates[id]?.startDate && dates[id]?.endDate ? dates[id] : { startDate, endDate },
-      }));
-      return [...current, id];
-    });
-  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -125,12 +143,16 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
     if (!customerId || !name.trim()) { setError("고객사와 프로젝트명은 필수입니다."); return; }
     if (!Number.isFinite(probability) || probability < 0 || probability > 100) { setError("수주 확률은 0~100 사이여야 합니다."); return; }
     if (!Number.isFinite(progress) || progress < 0 || progress > 100) { setError("진행률은 0~100 사이여야 합니다."); return; }
-    if (selectedResourceIds.some((id) => !Number.isFinite(allocations[id]) || allocations[id] < 0 || allocations[id] > 100)) {
-      setError("담당 리소스 배정률은 0~100 사이여야 합니다."); return;
-    }
-    if (selectedResourceIds.some((id) => !assignmentDates[id]?.startDate || !assignmentDates[id]?.endDate || assignmentDates[id].startDate > assignmentDates[id].endDate)) {
-      setError("담당 리소스별 올바른 배정 시작일과 종료일을 입력해 주세요."); return;
-    }
+    if (!loaded || busy) return;
+    const rowErrors = assignmentErrors(assignmentRows, baselineRows);
+    if (rowErrors.length) { setError(rowErrors.join(' ')); return; }
+    const scheduleChanged = !project || startDate !== (project.startDate ?? '') || endDate !== (project.endDate ?? '') || status !== project.status || probability !== project.probability || managerId !== initialManagerId;
+    const removed = baselineRows.some(row => !assignmentRows.some(a => a.id === row.id));
+    if ((scheduleChanged || removed) && !validBasis(scheduleBasis)) { setError('일정·확정 상태 변경 또는 배정 제외의 Gmail·Teams 근거를 확인해 주세요.'); return; }
+    if (contractStart && contractEnd && contractStart > contractEnd) { setError('계약 시작일과 종료일을 확인해 주세요.'); return; }
+    const contractChanged = contractStart !== (project?.contractStartDate ?? '') || contractEnd !== (project?.contractEndDate ?? '') || contractState !== (project?.contractState ?? 'unverified');
+    if (contractChanged && !validBasis(contractBasis)) { setError('계약 기간·상태의 Gmail·Teams 근거를 확인해 주세요.'); return; }
+    if (contractState === 'confirmed' && (!contractStart || !contractEnd || !validBasis(contractBasis))) { setError('확정 계약은 시작일·종료일과 근거가 필요합니다.'); return; }
     if (startDate && endDate && startDate > endDate) { setError("시작일은 종료일보다 늦을 수 없습니다."); return; }
     if (["Confirmed", "Planning", "In Progress"].includes(status) && (!startDate || !endDate)) {
       setError("확정·계획·진행 프로젝트는 시작일과 종료일이 필요합니다."); return;
@@ -143,70 +165,53 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
       follow_up_status: followUpStatus, next_action: nextAction.trim() || null,
       next_action_due_date: nextActionDueDate || null,
       evidence_summary: evidenceSummary.trim() || null,
-      project_manager_id: managerId || null, updated_at: new Date().toISOString(),
+      project_manager_id: managerId || null,
+      contract_start_date: contractStart || null, contract_end_date: contractEnd || null,
+      contract_state: contractState, contract_basis: contractBasis, schedule_basis: scheduleBasis,
     };
-    let projectId = project?.id ?? "";
-    if (project) {
-      const result = await client.from("projects").update(payload).eq("id", project.id);
-      if (result.error) { setError(result.error.message); setBusy(false); return; }
-    } else {
-      const result = await client.from("projects").insert(payload).select("id").single();
-      if (result.error) { setError(result.error.message); setBusy(false); return; }
-      projectId = result.data.id;
-    }
-    const existingResult = await client.from("project_assignments").delete().eq("project_id", projectId);
-    if (existingResult.error) { setError(existingResult.error.message); setBusy(false); return; }
-    const selected = new Set(selectedResourceIds);
-    if (selectedResourceIds.length) {
-      const inserts = resources.filter((resource) => selected.has(resource.id)).map((resource) => ({
-        project_id: projectId, resource_id: resource.id, role: resource.role,
-        allocation_percentage: allocations[resource.id] ?? 50,
-        start_date: assignmentDates[resource.id].startDate,
-        end_date: assignmentDates[resource.id].endDate,
-      }));
-      if (inserts.length) {
-        const result = await client.from("project_assignments").insert(inserts);
-        if (result.error) { setError(result.error.message); setBusy(false); return; }
-      }
-    }
-    await refresh(); setBusy(false); onClose();
+    try {
+      const result = await client.rpc('save_project_operations', {
+        p_project_id: project?.id ?? null, p_expected_version: expectedVersion,
+        p_expected_assignments: baselineRows, p_project: payload, p_assignments: assignmentRows,
+      });
+      if (result.error) throw result.error;
+      await refresh(); onClose();
+    } catch (e) { setError(saveError(e instanceof Error ? e.message : String((e as {message?:string}).message ?? e))); }
+    finally { setBusy(false); }
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={project ? "프로젝트 편집" : "프로젝트 등록"} eyebrow="PROJECT MANAGEMENT" wide>
+    <Dialog open={open} onClose={onClose} title={project ? "프로젝트 편집" : "프로젝트 등록"} eyebrow="PROJECT MANAGEMENT" wide locked={busy}>
       <form onSubmit={submit}>
+        <fieldset className="project-fields" disabled={busy || !loaded}>
         <div className="form-grid">
           <label>고객사<select value={customerId} onChange={(e) => setCustomerId(e.target.value)} required><option value="">선택</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
           <label>프로젝트명<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
           <label>카테고리<select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>수행 형태<select value={workMode} onChange={(e) => setWorkMode(e.target.value as WorkMode)}><option value="non_resident">비상주</option><option value="resident">상주</option></select></label>
-          <label>상태<select value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>{statuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>수주 확률<input type="number" min="0" max="100" value={probability} onChange={(e) => setProbability(Number(e.target.value))} /></label>
+          <label>상태<select value={status} onChange={(e) => {setStatus(e.target.value as ProjectStatus);setScheduleBasis(null)}}>{statuses.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>수주 확률<input type="number" min="0" max="100" value={probability} onChange={(e) => {setProbability(Number(e.target.value));setScheduleBasis(null)}} /></label>
           <label>진행률<input type="number" min="0" max="100" value={progress} onChange={(e) => setProgress(Number(e.target.value))} /></label>
           <label>위험 수준<select value={risk} onChange={(e) => setRisk(e.target.value as RiskLevel)}><option>Low</option><option>Medium</option><option>High</option></select></label>
           <label>현재 단계<input value={phase} onChange={(e) => setPhase(e.target.value)} /></label>
-          <label>시작일<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
-          <label>종료일<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
-          <label>프로젝트 매니저<select value={managerId} onChange={(e) => setManagerId(e.target.value)}><option value="">미지정</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
+          <label>프로젝트 시작일<input type="date" value={startDate} onChange={(e) => {setStartDate(e.target.value);setScheduleBasis(null)}} /></label>
+          <label>프로젝트 종료일<input type="date" value={endDate} onChange={(e) => {setEndDate(e.target.value);setScheduleBasis(null)}} /></label>
+          <label>계약 시작일<input type="date" value={contractStart} onChange={e => {setContractStart(e.target.value);setContractBasis(null)}} /></label>
+          <label>계약 종료일<input type="date" value={contractEnd} onChange={e => {setContractEnd(e.target.value);setContractBasis(null)}} /></label>
+          <label>계약 확인 상태<select value={contractState} onChange={e => {setContractState(e.target.value as VerificationState);setContractBasis(null)}}><option value="unverified">미확인</option><option value="tentative">협의 중</option><option value="confirmed">확정</option></select></label>
+          <label>프로젝트 매니저<select value={managerId} onChange={(e) => {setManagerId(e.target.value);setScheduleBasis(null)}}><option value="">미지정</option>{managerId&&!resources.some(r=>r.id===managerId)&&<option value={managerId}>기존 담당자 · 기록 유지</option>}{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
           <label className="span-2">프로젝트 범위<textarea value={scope} onChange={(e) => setScope(e.target.value)} rows={3} /></label>
           <label>후속조치 상태<select value={followUpStatus} onChange={(e) => setFollowUpStatus(e.target.value as FollowUpStatus)}><option value="Not Required">해당 없음</option><option value="Pending">조치 필요</option><option value="Waiting">회신 대기</option><option value="Done">완료</option></select></label>
           <label>후속조치 기한<input type="date" value={nextActionDueDate} onChange={(e) => setNextActionDueDate(e.target.value)} /></label>
           <label className="span-2">다음 액션<textarea value={nextAction} onChange={(e) => setNextAction(e.target.value)} rows={2} /></label>
           <label className="span-2">메일·일정 확인 근거<textarea value={evidenceSummary} onChange={(e) => setEvidenceSummary(e.target.value)} rows={3} /></label>
         </div>
-        <fieldset className="resource-picker"><legend>담당 리소스·배정률·배정기간</legend>{resources.map((resource) => {
-          const selected = selectedResourceIds.includes(resource.id);
-          return <div className={`resource-assignment-card ${selected ? "selected" : ""}`} key={resource.id}>
-            <label className="resource-toggle"><input type="checkbox" checked={selected} onChange={() => toggleResource(resource.id)} /><span>{resource.name}</span><small>{resource.skill}</small></label>
-            {selected && <div className="assignment-fields">
-              <label>배정률<input className="allocation-input" aria-label={`${resource.name} 배정률`} type="number" min="0" max="100" value={allocations[resource.id] ?? 50} onChange={(event) => setAllocations((current) => ({ ...current, [resource.id]: Number(event.target.value) }))} /></label>
-              <label>배정 시작일<input aria-label={`${resource.name} 배정 시작일`} type="date" value={assignmentDates[resource.id]?.startDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], startDate: event.target.value } }))} /></label>
-              <label>배정 종료일<input aria-label={`${resource.name} 배정 종료일`} type="date" value={assignmentDates[resource.id]?.endDate ?? ""} onChange={(event) => setAssignmentDates((current) => ({ ...current, [resource.id]: { ...current[resource.id], endDate: event.target.value } }))} /></label>
-            </div>}
-          </div>;
-        })}</fieldset>
+        <EvidenceEditor label="프로젝트 일정·확정 상태 / 배정 제외 근거" value={scheduleBasis} onChange={setScheduleBasis} />
+        <EvidenceEditor label="계약 기간 확인 근거" value={contractBasis} onChange={setContractBasis} />
+        <AssignmentRowsEditor rows={assignmentRows} resources={resources} onChange={setAssignmentRows} disabled={busy || !loaded} />
+        </fieldset>
         {error && <p className="form-error">{error}</p>}
-        <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>취소</button><button className="primary" disabled={busy}>{busy ? "저장 중…" : project ? "변경 저장" : "프로젝트 등록"}</button></div>
+        <div className="dialog-actions"><button type="button" className="secondary" disabled={busy} onClick={onClose}>취소</button><button className="primary" disabled={busy || !loaded}>{busy ? "저장 중…" : project ? "변경 저장" : "프로젝트 등록"}</button></div>
       </form>
     </Dialog>
   );
@@ -230,21 +235,21 @@ export type ReportKind = "월간 포트폴리오" | "확정 vs 파이프라인" 
 
 export function ReportDialog({ kind, onClose }: { kind: ReportKind | null; onClose: () => void }) {
   const { projects, resources } = usePortfolio();
-  const reportDate = new Date();
+  const reportDate = new Date(`${seoulToday()}T12:00:00+09:00`);
   const reportYear = reportDate.getFullYear();
   const reportMonth = reportDate.getMonth() + 1;
   const staleThreshold = new Date(reportDate); staleThreshold.setDate(staleThreshold.getDate() - 14);
   const staleDate = staleThreshold.toISOString().slice(0, 10);
   const rows = useMemo(() => {
     if (!kind) return [] as string[][];
-    if (kind === "리소스 활용률") return resources.map((resource) => [resource.name, resource.role, `${allocationFor(resource.name, reportMonth, projects, reportYear)}%`, resource.skill]);
+    if (kind === "리소스 활용률") return resources.map((resource) => {const l=resourceLoad(resource,reportYear,reportMonth,projects);return [resource.name,resource.role,`${l.total}%`,`확정 ${l.confirmed}% / 예정 ${l.tentative}% / 기존 등록 ${l.legacy}% / 근거 미확인 ${l.unverified}%${l.unknown?' · 확인 필요':''}`,resource.skill]});
     if (kind === "고객사 요약") return Array.from(new Set(projects.map((project) => project.customer))).map((customer) => { const items = projects.filter((project) => project.customer === customer); return [customer, String(items.length), String(items.filter((item) => item.probability === 100).length), String(items.filter((item) => item.probability < 100).length)]; });
     if (kind === "위험 및 이슈") return projects.filter((project) => project.risk !== "Low" || !project.startDate || !project.resources.length).map((project) => [project.customer, project.name, project.risk, !project.startDate ? "일정 미정" : !project.resources.length ? "리소스 미지정" : "위험 검토"]);
     if (kind === "업데이트 준수") return [...projects].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((project) => [project.customer, project.name, project.updatedAt, project.updatedAt < staleDate ? "업데이트 필요" : "정상"]);
     return projects.filter((project) => kind !== "확정 vs 파이프라인" || project.probability > 0).map((project) => [project.customer, project.name, `${project.probability}%`, project.status, project.startDate ?? "미정", project.endDate ?? "미정"]);
   }, [kind, projects, resources, reportMonth, reportYear, staleDate]);
-  const headers = kind === "리소스 활용률" ? ["리소스", "역할", `${reportMonth}월 활용률`, "주요 기술"] : kind === "고객사 요약" ? ["고객사", "전체", "확정", "파이프라인"] : kind === "위험 및 이슈" ? ["고객사", "프로젝트", "위험", "검토 항목"] : kind === "업데이트 준수" ? ["고객사", "프로젝트", "최근 업데이트", "상태"] : ["고객사", "프로젝트", "확률", "상태", "시작일", "종료일"];
-  function download() { if (!kind) return; const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map((cell) => '"' + String(cell).replaceAll('"', '""') + '"').join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click(); URL.revokeObjectURL(url); }
+  const headers = kind === "리소스 활용률" ? ["리소스", "역할", `${reportMonth}월 등록 합계`, "확인 구분", "주요 기술"] : kind === "고객사 요약" ? ["고객사", "전체", "확정", "파이프라인"] : kind === "위험 및 이슈" ? ["고객사", "프로젝트", "위험", "검토 항목"] : kind === "업데이트 준수" ? ["고객사", "프로젝트", "최근 업데이트", "상태"] : ["고객사", "프로젝트", "확률", "상태", "시작일", "종료일"];
+  function download() { if (!kind) return; const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
   return <Dialog open={Boolean(kind)} onClose={onClose} title={kind ?? "리포트"} eyebrow="MANAGEMENT REPORT" wide><div className="report-actions"><button className="secondary" onClick={download}><Download /> CSV 내보내기</button><button className="secondary" onClick={() => window.print()}>인쇄 / PDF</button></div><div className="table-wrap report-table"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div><p className="dialog-note">현재 승인된 포트폴리오 데이터를 기준으로 생성되었습니다. 총 {rows.length}개 항목입니다.</p></Dialog>;
 }
 

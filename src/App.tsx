@@ -69,6 +69,8 @@ import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import type { Project, Resource, RiskLevel } from "./types";
 import { StaffingWorkspace } from "./StaffingWorkspace";
 import { resourceLoad, reviewProjects, seoulToday } from "./lib/staffing";
+import { PortfolioTrends, ProjectEvidence, ProjectHistory } from './OperationsHistory';
+import { dailyLoad } from './lib/timeline';
 
 let projects: Project[] = [];
 let resources: Resource[] = [];
@@ -566,7 +568,7 @@ function Dashboard() {
   const now = new Date();
   const dashboardYear = now.getFullYear();
   const dashboardMonth = now.getMonth() + 1;
-  const overallocated = resources.filter((resource) => resourceLoad(resource, dashboardYear, dashboardMonth, projects).tone === "over");
+  const overallocated = resources.filter((resource) => dailyLoad(resource,projects,dashboardYear,dashboardMonth).peak>resource.capacity);
   const unassigned = projects.filter((project) => !projectHasVisibleOwner(project));
   const unscheduled = projects.filter((project) => !project.startDate || !project.endDate);
   const followUps = projects.filter((project) => project.followUpStatus === "Pending" || project.followUpStatus === "Waiting");
@@ -1011,6 +1013,7 @@ function ProjectDetail() {
         />
       </section>
       <section className="detail-grid">
+        <ProjectEvidence project={p} />
         {(p.followUpStatus || p.nextAction || p.evidenceSummary) && (
           <article className="panel prose span-2">
             <h2>메일 추적 및 후속조치</h2>
@@ -1058,7 +1061,7 @@ function ProjectDetail() {
                 <div className="avatar">{n.slice(0, 2)}</div>
                 <div>
                   <strong>{n}</strong>
-                  <span>{p.resourceAssignments?.[n]?.map((assignment) => `할당 ${assignment.allocation}% · ${assignment.startDate}~${assignment.endDate}`).join(" / ") ?? `할당 ${p.resourceAllocations?.[n] ?? 50}% · 프로젝트 기간`}</span>
+                  <span>{p.resourceAssignments?.[n]?.map((assignment) => `할당 ${assignment.allocation}% · ${assignment.startDate}~${assignment.endDate}`).join(" / ") ?? (p.resourceAllocations?.[n] === undefined ? '투입률 확인 필요' : `할당 ${p.resourceAllocations[n]}% · 프로젝트 기간`)}</span>
                 </div>
               </div>
             ))
@@ -1089,6 +1092,7 @@ function ProjectDetail() {
             </div>
           </div>
         </article>
+        <ProjectHistory projectId={p.id} />
       </section>
     </>
   );
@@ -1234,7 +1238,7 @@ function Resources() {
       <section className="resource-grid">
         {visibleResources.map((r) => {
           const load = resourceLoad(r, resourceYear, month, projects);
-          const alloc = load.total;
+          const alloc = dailyLoad(r,projects,resourceYear,month).peak;
           const teachingOnly = r.name === "진미나";
           const allocationUnknown = load.unknown;
           const monthKey = `${resourceYear}-${String(month).padStart(2, "0")}`;
@@ -1267,7 +1271,7 @@ function Resources() {
                 </Badge>
               </div>
               {!teachingOnly && <><div className="capacity">
-                <span>{allocationUnknown ? "등록된 투입률 합계" : load.tentative > 0 ? "확정·예정 합계" : "월간 할당"}</span>
+                <span>{allocationUnknown ? "날짜별 최대 · 확인 필요" : "이달 날짜별 최대 투입률"}</span>
                 <strong>{alloc}%</strong>
               </div>
               <div className="progress">
@@ -1388,6 +1392,7 @@ function Reports() {
         desc="현재 포트폴리오 데이터를 바탕으로 한 결정론적 경영 요약입니다."
       />
       <ReportDialog kind={openReport} onClose={() => setOpenReport(null)} />
+      <PortfolioTrends />
       <article className="panel report-hero">
         <div>
           <p className="eyebrow">{reportMonthLabel.toUpperCase()} · EXECUTIVE SUMMARY</p>

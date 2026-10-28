@@ -2,6 +2,12 @@ export type ProjectStatus = 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 
 export type RiskLevel = 'Low' | 'Medium' | 'High'
 export type WorkMode = 'resident' | 'non_resident'
 export type FollowUpStatus = 'Not Required' | 'Pending' | 'Waiting' | 'Done'
+export type VerificationState = 'unverified' | 'tentative' | 'confirmed'
+export interface EvidenceBasis { source: 'gmail' | 'teams'; reference: string; checkedAt: string }
+export interface DatedAssignment {
+  id?: string; resourceId?: string; allocation: number; startDate: string; endDate: string;
+  verification?: VerificationState | 'legacy'; kind?: 'allocation' | 'included'; parentId?: string | null; basis?: EvidenceBasis | null
+}
 
 export interface Project {
   id: string
@@ -18,7 +24,13 @@ export interface Project {
   manager: string
   resources: string[]
   resourceAllocations?: Record<string, number>
-  resourceAssignments?: Record<string, Array<{ allocation: number; startDate: string; endDate: string }>>
+  resourceAssignments?: Record<string, DatedAssignment[]>
+  version?: string
+  contractStartDate?: string | null
+  contractEndDate?: string | null
+  contractState?: VerificationState
+  contractBasis?: EvidenceBasis | null
+  scheduleBasis?: EvidenceBasis | null
   risk: RiskLevel
   scope: string
   phase: string

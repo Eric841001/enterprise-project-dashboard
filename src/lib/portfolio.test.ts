@@ -16,7 +16,8 @@ describe('portfolio calculations',()=>{
   it('prorates the current starting month instead of counting the full month',()=>{expect(calculateScheduleProgress({startDate:'2026-07-01',endDate:'2026-12-31'},new Date(2026,6,16))).toBe(9)})
   it('calculates progress from discontinuous scheduled months',()=>{expect(calculateScheduleProgress({startDate:'2026-04-01',endDate:'2026-10-31',workPeriods:[{startDate:'2026-04-01',endDate:'2026-04-30'},{startDate:'2026-08-01',endDate:'2026-10-31'}]},new Date(2026,6,16))).toBe(25)})
   it('keeps future schedules at zero progress',()=>{expect(calculateScheduleProgress({startDate:'2026-08-01',endDate:'2026-10-31'},new Date(2026,6,16))).toBe(0)})
-  it('detects monthly over-allocation',()=>{expect(allocationFor('Engineer B',8,projects)).toBeGreaterThan(100)})
+  it('detects monthly over-allocation from explicitly registered rates',()=>{expect(allocationFor('Engineer B',8,projects.map(p=>({...p,resourceAllocations:{'Engineer B':50}})))).toBeGreaterThan(100)})
+  it('does not invent 50 percent for an unregistered assignment',()=>{expect(allocationFor('Engineer B',8,projects)).toBe(0)})
   it('uses an individual resource assignment period instead of the project schedule',()=>{
     const project={...projects[0],startDate:'2026-08-01',endDate:'2026-08-31',resources:['김태후'],resourceAllocations:{김태후:50},resourceAssignments:{김태후:[{allocation:50,startDate:'2026-07-01',endDate:'2026-07-31'}]}}
     expect(allocationFor('김태후',7,[project])).toBe(50)

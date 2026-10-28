@@ -147,3 +147,14 @@
   .staffing-load strong{font-size:26px}
 }
 @media(prefers-reduced-motion:reduce){.staffing-workspace *,.staffing-modal *{transition:none!important}}
+.evidence-editor { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.evidence-editor label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.evidence-editor input:not([type=checkbox]) { min-width: 180px; width: 100%; }
+.evidence-editor small { display: block; margin-top: 8px; color: var(--muted); }
+.staffing-days { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 5px; margin: 12px 0; }
+.staffing-days > span { display: grid; padding: 8px 4px; border: 1px solid var(--line); border-radius: 7px; text-align: center; }
+.staffing-days .over { background: #9f123933; color: #fda4af; }
+.staffing-days .unknown { border-style: dashed; color: #b7791f; }
+.staffing-days strong { font-size: 12px; }
+.staffing-daily { margin-bottom: 20px; }
+.staffing-queue-tabs { flex-wrap: wrap; }

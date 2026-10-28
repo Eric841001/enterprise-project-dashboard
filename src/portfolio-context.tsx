@@ -13,7 +13,7 @@ import {
 } from "./data";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { calculateScheduleProgress } from "./lib/portfolio";
-import type { Project, ProjectStatus, Resource, RiskLevel } from "./types";
+import type { DatedAssignment, EvidenceBasis, Project, ProjectStatus, Resource, RiskLevel, VerificationState } from "./types";
 
 const sampleProjects = import.meta.env.MODE === "test" ? allSampleProjects : [];
 const sampleResources = import.meta.env.MODE === "test" ? allSampleResources.filter((resource) => resource.name !== "정석원") : [];
@@ -50,6 +50,11 @@ interface ProjectRow {
   evidence_last_at: string | null;
   evidence_summary: string | null;
   project_manager_id: string | null;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  contract_state?: VerificationState;
+  contract_basis?: EvidenceBasis | null;
+  schedule_basis?: EvidenceBasis | null;
 }
 interface CustomerRow {
   id: string;
@@ -63,11 +68,17 @@ interface ResourceRow {
   available_capacity: number;
 }
 interface AssignmentRow {
+  id?: string;
   project_id: string;
   resource_id: string;
   allocation_percentage: number;
   start_date: string;
   end_date: string;
+  verification_state?: VerificationState | 'legacy';
+  record_kind?: 'allocation' | 'included';
+  parent_assignment_id?: string | null;
+  evidence_basis?: EvidenceBasis | null;
+  removed_at?: string | null;
 }
 interface WorkPeriodRow {
   project_id: string;
@@ -174,7 +185,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       client
         .from("projects")
         .select(
-          "id,customer_id,name,category,project_type,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id,follow_up_status,next_action,next_action_due_date,evidence_last_at,evidence_summary",
+          "id,customer_id,name,category,project_type,probability,status,start_date,end_date,progress,risk_level,scope_summary,phase,updated_at,import_note,project_manager_id,follow_up_status,next_action,next_action_due_date,evidence_last_at,evidence_summary,contract_start_date,contract_end_date,contract_state,contract_basis,schedule_basis",
         )
         .eq("is_archived", false)
         .order("updated_at", { ascending: false }),
@@ -184,7 +195,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         .select("id,name,role,primary_skill,available_capacity")
         .eq("employment_status", "active")
         .order("name"),
-      client.from("project_assignments").select("project_id,resource_id,allocation_percentage,start_date,end_date"),
+      client.from("project_assignments").select("*"),
       client
         .from("project_work_periods")
         .select("project_id,start_date,end_date"),
@@ -209,7 +220,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     const customerRows = (customerResult.data ?? []) as CustomerRow[];
     const allResourceRows = (resourceResult.data ?? []) as ResourceRow[];
     const resourceRows = allResourceRows.filter((row) => row.name !== "정석원");
-    const assignmentRows = (assignmentResult.data ?? []) as AssignmentRow[];
+    const assignmentRows = ((assignmentResult.data ?? []) as AssignmentRow[]).filter(a => !a.removed_at);
     const periodRows = (periodResult.data ?? []) as WorkPeriodRow[];
     const customerById = new Map(customerRows.map((row) => [row.id, row.name]));
     setCustomers(customerRows);
@@ -239,13 +250,17 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         );
         const resourceAssignments = assignmentRows
           .filter((assignment) => assignment.project_id === row.id)
-          .reduce<Record<string, Array<{ allocation: number; startDate: string; endDate: string }>>>((result, assignment) => {
+          .reduce<Record<string, DatedAssignment[]>>((result, assignment) => {
             const name = resourceById.get(assignment.resource_id);
             if (!name) return result;
             (result[name] ??= []).push({
+              id: assignment.id, resourceId: assignment.resource_id,
               allocation: assignment.allocation_percentage,
               startDate: assignment.start_date,
               endDate: assignment.end_date,
+              verification: assignment.verification_state,
+              kind: assignment.record_kind, parentId: assignment.parent_assignment_id,
+              basis: assignment.evidence_basis,
             });
             return result;
           }, {});
@@ -281,6 +296,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           scope: row.scope_summary ?? "범위 미정",
           phase: row.phase ?? "미정",
           updatedAt: row.updated_at.slice(0, 10),
+          version: row.updated_at,
+          contractStartDate: row.contract_start_date, contractEndDate: row.contract_end_date,
+          contractState: row.contract_state, contractBasis: row.contract_basis, scheduleBasis: row.schedule_basis,
           workMonths: periods.length ? monthsForPeriods(periods) : undefined,
           workPeriods,
           importNote: row.import_note ?? undefined,

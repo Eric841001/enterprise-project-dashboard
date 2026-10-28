@@ -116,7 +116,7 @@ export function allocationFor(resource: string, month: number, rows: Project[], 
           .reduce((sum, assignment) => sum + assignment.allocation, 0)
       }
       return activeInMonth(project, month, year)
-        ? total + (project.resourceAllocations?.[resource] ?? 50)
+        ? total + (project.resourceAllocations?.[resource] ?? 0)
         : total
     }, 0)
 }
