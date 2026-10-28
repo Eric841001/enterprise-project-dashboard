@@ -29,7 +29,9 @@ export function shiftMonth(key:string,amount:number) {
 }
 export const pipelineStatuses=new Set(['Lead','Qualified','Proposal','Negotiation'])
 export function monthlyPortfolio(projects:Project[],year:number,month:number){
-  const dated=projects.filter(p=>Boolean(p.startDate&&p.endDate||p.workPeriods?.length||p.workMonths?.length)&&activeInMonth(p,month,year))
+  const dated=projects.filter(p=>p.startDate&&p.endDate
+    ?activeInMonth({...p,workPeriods:undefined,workMonths:undefined},month,year)
+    :Boolean(p.workPeriods?.length||p.workMonths?.length)&&activeInMonth(p,month,year))
   const open=dated.filter(isOpenProject)
   return {dated,open,confirmed:open.filter(p=>!pipelineStatuses.has(p.status)),pipeline:open.filter(p=>pipelineStatuses.has(p.status)),closed:dated.filter(p=>!isOpenProject(p)),unscheduled:projects.filter(p=>isOpenProject(p)&&(!p.startDate||!p.endDate)),high:open.filter(p=>p.risk==='High'||p.status==='At Risk')}
 }

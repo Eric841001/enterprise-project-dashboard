@@ -29,13 +29,19 @@ describe('periods and reporting',()=>{
     expect(s.dated).toHaveLength(3)
   })
   it('filters exports to the selected year and month, including discontinuous work periods',()=>{
-    const list=[p,{...p,id:'future',name:'미래 업무',startDate:'2027-01-01',endDate:'2027-01-31'},{...p,id:'gap',name:'중간 공백',workPeriods:[{startDate:'2026-09-01',endDate:'2026-09-30'},{startDate:'2026-11-01',endDate:'2026-11-30'}]}]
+    const list=[p,{...p,id:'future',name:'미래 업무',startDate:'2027-01-01',endDate:'2027-01-31'},{...p,id:'gap',name:'중간 공백',startDate:null,endDate:null,workPeriods:[{startDate:'2026-09-01',endDate:'2026-09-30'},{startDate:'2026-11-01',endDate:'2026-11-30'}]}]
     expect(buildReport('월간 포트폴리오',list,[],2027,1).rows.map(r=>r[1])).toEqual(['미래 업무'])
     expect(buildReport('월간 포트폴리오',list,[],2026,10).rows.map(r=>r[1])).toEqual(['검증 프로젝트'])
   })
   it('does not present an unknown end date as scheduled work indefinitely into the future',()=>{
     const s=monthlyPortfolio([{...p,endDate:null}],2070,1)
     expect(s.dated).toHaveLength(0);expect(s.unscheduled).toHaveLength(1)
+  })
+  it('uses the complete project period ahead of older task windows in project reports',()=>{
+    const item={...p,workMonths:[10],workPeriods:[{startDate:'2026-10-01',endDate:'2026-10-31'}]}
+    expect(monthlyPortfolio([item],2026,11).dated).toHaveLength(1)
+    expect(buildReport('월간 포트폴리오',[item],[],2026,12).rows).toHaveLength(1)
+    expect(monthlyPortfolio([item],2027,1).dated).toHaveLength(0)
   })
   it('separates actual daily peaks from monthly registration totals in resource exports',()=>{
     const item={...p,resourceAssignments:{'검증 담당':[{allocation:100,startDate:'2026-10-01',endDate:'2026-10-15'},{allocation:100,startDate:'2026-10-16',endDate:'2026-10-31'}]}}
