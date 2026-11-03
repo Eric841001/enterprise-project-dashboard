@@ -176,6 +176,14 @@ export function ProjectFormDialog({ open, onClose, project }: { open: boolean; o
         p_expected_assignments: baselineRows, p_project: payload, p_assignments: assignmentRows,
       });
       if (result.error) throw result.error;
+      const weekdayChanges = assignmentRows.filter((row) => {
+        const baseline = baselineRows.find((candidate) => candidate.id === row.id);
+        return row.id && baseline && JSON.stringify(baseline.weekdays ?? null) !== JSON.stringify(row.weekdays ?? null);
+      });
+      for (const row of weekdayChanges) {
+        const weekdayResult = await client.from('project_assignments').update({ weekdays: row.weekdays?.length ? row.weekdays : null }).eq('id', row.id!);
+        if (weekdayResult.error) throw weekdayResult.error;
+      }
       await refresh(); onClose();
     } catch (e) { setError(saveError(e instanceof Error ? e.message : String((e as {message?:string}).message ?? e))); }
     finally { setBusy(false); }

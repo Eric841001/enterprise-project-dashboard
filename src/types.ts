@@ -6,7 +6,7 @@ export type VerificationState = 'unverified' | 'tentative' | 'confirmed'
 export interface EvidenceBasis { source: 'gmail' | 'teams'; reference: string; checkedAt: string }
 export interface DatedAssignment {
   id?: string; resourceId?: string; allocation: number; startDate: string; endDate: string;
-  verification?: VerificationState | 'legacy'; kind?: 'allocation' | 'included'; parentId?: string | null; basis?: EvidenceBasis | null
+  weekdays?: number[]; verification?: VerificationState | 'legacy'; kind?: 'allocation' | 'included'; parentId?: string | null; basis?: EvidenceBasis | null
 }
 
 export interface Project {

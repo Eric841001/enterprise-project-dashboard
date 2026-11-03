@@ -101,24 +101,15 @@ export function projectCountForResource(resource: string, month: number, rows: P
   return rows.filter(project => resourceActiveInMonth(resource, project, month, year)).length
 }
 export function allocationFor(resource: string, month: number, rows: Project[], year = 2026) {
-  return rows
-    .filter(p => p.resources.includes(resource))
-    .reduce((total, project) => {
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return Math.max(0, ...Array.from({length: days}, (_, index) => {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`
+    return rows.filter(p => p.resources.includes(resource)).reduce((total, project) => {
       const assignments = project.resourceAssignments?.[resource]
-      if (assignments?.length) {
-        const point = year * 12 + month
-        return total + assignments
-          .filter(assignment => {
-            const start = Number(assignment.startDate.slice(0,4)) * 12 + Number(assignment.startDate.slice(5,7))
-            const end = Number(assignment.endDate.slice(0,4)) * 12 + Number(assignment.endDate.slice(5,7))
-            return point >= start && point <= end
-          })
-          .reduce((sum, assignment) => sum + assignment.allocation, 0)
-      }
-      return activeInMonth(project, month, year)
-        ? total + (project.resourceAllocations?.[resource] ?? 0)
-        : total
+      if (assignments?.length) return total + assignments.filter(a => a.startDate <= date && a.endDate >= date && (!a.weekdays?.length || a.weekdays.includes(new Date(`${date}T00:00:00Z`).getUTCDay()))).reduce((sum, a) => sum + a.allocation, 0)
+      return activeInMonth(project, month, year) ? total + (project.resourceAllocations?.[resource] ?? 0) : total
     }, 0)
+  }))
 }
 
 export function hasUnconfirmedAllocation(resource: string, month: number, rows: Project[], year = 2026) {

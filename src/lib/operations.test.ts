@@ -46,6 +46,13 @@ describe('date-based load and verification',()=>{
     expect(dailyLoad(person,projects,2026,10).conflicts.map(d=>d.date)).toEqual(['2026-10-15'])
     expect(dailyLoad(person,[...projects,{...project,status:'Completed'}],2026,10).peak).toBe(200)
   })
+  it('applies recurring assignments only on their selected weekdays',()=>{
+    const p=dated('2026-11-03','2027-03-31');p.resourceAssignments![person.name][0].weekdays=[1,2,5]
+    const load=dailyLoad(person,[p],2026,11)
+    expect(load.rows.find(d=>d.date==='2026-11-03')?.total).toBe(100)
+    expect(load.rows.find(d=>d.date==='2026-11-04')?.total).toBe(0)
+    expect(load.peak).toBe(100)
+  })
   it('adds a simulation only on its actual dates rather than adding monthly reservations',()=>{
     const projects=[dated('2026-10-01','2026-10-15')]
     const result=compareDraft(person,projects,'2026-10-16','2026-10-31',100)[0]

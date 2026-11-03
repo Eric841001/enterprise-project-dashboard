@@ -4,6 +4,7 @@ import { validBasis, validDate } from './evidence'
 export interface AssignmentRow {
   id?: string; project_id?: string; resource_id: string; role: string;
   allocation_percentage: number; start_date: string; end_date: string;
+  weekdays?: number[] | null;
   verification_state: VerificationState | 'legacy'; record_kind: 'allocation' | 'included';
   parent_assignment_id: string | null; evidence_basis: EvidenceBasis | null;
   removed_at?: string | null
@@ -19,7 +20,7 @@ export function assignmentErrors(rows: AssignmentRow[], baseline: AssignmentRow[
     if (!validDate(row.start_date) || !validDate(row.end_date) || row.start_date > row.end_date) errors.push('배정 시작일과 종료일을 확인해 주세요.')
     if (!Number.isInteger(row.allocation_percentage) || row.allocation_percentage < 0 || row.allocation_percentage > 100) errors.push('배정률은 0~100 사이의 정수로 입력해 주세요.')
     const old = baseline.find(a => a.id === row.id)
-    const fields = ['resource_id','allocation_percentage','start_date','end_date','verification_state','record_kind','parent_assignment_id','evidence_basis'] as const
+    const fields = ['resource_id','allocation_percentage','start_date','end_date','weekdays','verification_state','record_kind','parent_assignment_id','evidence_basis'] as const
     const changed = !old || fields.some(k => JSON.stringify(old[k]) !== JSON.stringify(row[k]))
     if (changed && !validBasis(row.evidence_basis)) errors.push('변경한 배정의 Gmail·Teams 근거를 확인해 주세요.')
     if (changed && row.verification_state === 'legacy') errors.push('변경한 배정은 미확인·예정·확정 중 확인 상태를 선택해 주세요.')

@@ -75,6 +75,7 @@ interface AssignmentRow {
   allocation_percentage: number;
   start_date: string;
   end_date: string;
+  weekdays?: number[] | null;
   verification_state?: VerificationState | 'legacy';
   record_kind?: 'allocation' | 'included';
   parent_assignment_id?: string | null;
@@ -260,6 +261,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
               allocation: assignment.allocation_percentage,
               startDate: assignment.start_date,
               endDate: assignment.end_date,
+              weekdays: assignment.weekdays ?? undefined,
               verification: assignment.verification_state,
               kind: assignment.record_kind, parentId: assignment.parent_assignment_id,
               basis: assignment.evidence_basis,

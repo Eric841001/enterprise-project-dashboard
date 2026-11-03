@@ -9,7 +9,7 @@ export function dailyLoad(resource: Resource, projects: Project[], year: number,
     const lines = projects.filter(p=>!['Completed','Cancelled','Archived'].includes(p.status)).flatMap(project => {
       const assignments = project.resourceAssignments?.[resource.name] ?? []
       if (assignments.length) {
-        return assignments.filter(a => a.startDate <= date && a.endDate >= date && a.kind !== 'included').map(a => ({
+        return assignments.filter(a => a.startDate <= date && a.endDate >= date && a.kind !== 'included' && (!a.weekdays?.length || a.weekdays.includes(new Date(`${date}T00:00:00Z`).getUTCDay()))).map(a => ({
           project, allocation:a.allocation,
           unknown:a.verification === 'unverified' || (a.allocation===0 && (!a.verification || a.verification==='legacy') && !assignments.some(p => p.allocation===100 && p.startDate<=a.startDate && p.endDate>=a.endDate)),
           tentative:a.verification === 'tentative' || ['Lead','Qualified','Proposal','Negotiation'].includes(project.status),
