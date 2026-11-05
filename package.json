@@ -10,7 +10,8 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:teams": "node scripts/build-teams-package.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.52.0",

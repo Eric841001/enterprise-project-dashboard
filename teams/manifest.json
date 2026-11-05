@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.22",
+  "version": "1.0.0",
+  "id": "4fc209d7-3d3a-4907-adac-400523f990b9",
+  "developer": {
+    "name": "MegazoneCloud",
+    "websiteUrl": "https://eric841001.github.io/enterprise-project-dashboard/",
+    "privacyUrl": "https://eric841001.github.io/enterprise-project-dashboard/",
+    "termsOfUseUrl": "https://eric841001.github.io/enterprise-project-dashboard/"
+  },
+  "icons": {
+    "color": "icon-color.png",
+    "outline": "icon-outline.png"
+  },
+  "name": {
+    "short": "Project Dashboard",
+    "full": "Megazone Project Dashboard"
+  },
+  "description": {
+    "short": "승인된 관리자 전용 프로젝트 및 리소스 현황",
+    "full": "Megazone 프로젝트, 일정, 리소스 배정 현황을 확인하는 승인된 관리자 전용 개인 앱입니다."
+  },
+  "accentColor": "#0f766e",
+  "staticTabs": [
+    {
+      "entityId": "project-dashboard",
+      "name": "Project Dashboard",
+      "scopes": ["personal"],
+      "contentUrl": "https://eric841001.github.io/enterprise-project-dashboard/",
+      "websiteUrl": "https://eric841001.github.io/enterprise-project-dashboard/"
+    }
+  ],
+  "validDomains": ["eric841001.github.io"],
+  "devicePermissions": []
+}
